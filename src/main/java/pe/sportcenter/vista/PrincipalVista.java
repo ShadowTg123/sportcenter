@@ -3,10 +3,13 @@ package pe.sportcenter.vista;
 import pe.sportcenter.controlador.AutenticacionControlador;
 import pe.sportcenter.modelo.Rol;
 import pe.sportcenter.modelo.Usuario;
+import pe.sportcenter.controlador.CanchaControlador;
+import pe.sportcenter.dao.CanchaDAOImpl;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
+
 
 public class PrincipalVista extends JFrame {
 
@@ -79,13 +82,22 @@ public class PrincipalVista extends JFrame {
                 bienvenida.setText("Seleccione una opción del menú.")
         );
 
-        botonCanchas.addActionListener(e ->
-                JOptionPane.showMessageDialog(
-                        this,
-                        "El módulo de canchas se incorporará "
-                                + "en la segunda entrega del código."
-                )
-        );
+        botonCanchas.addActionListener(e -> {
+
+            CanchaControlador canchaControlador =
+                    new CanchaControlador(
+                            new CanchaDAOImpl(),
+                            controlador
+                    );
+
+            CanchaVista ventana = new CanchaVista(
+                    this,
+                    canchaControlador,
+                    usuario.getRol() == Rol.ADMINISTRADOR
+            );
+
+            ventana.setVisible(true);
+        });
 
         botonCerrar.addActionListener(e -> cerrarSesion());
 

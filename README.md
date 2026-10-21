@@ -13,7 +13,21 @@ Funcionalidades implementadas:
 - Protección de contraseñas mediante PBKDF2 con sal aleatoria.
 - Registro de eventos mediante Logback.
 
-El módulo de canchas está pendiente de implementación.
+## Gestión de canchas
+
+- Registro, consulta y modificación de canchas.
+- Validación del nombre, deporte y tarifa por hora.
+- Eliminación lógica mediante el estado inactiva.
+- Eliminación física únicamente cuando la cancha no tiene alquileres asociados.
+- Administrador: acceso a todas las operaciones.
+- Recepcionista: consulta de canchas activas, sin permisos de modificación.
+
+## Preparación de la base de datos
+
+Ejecutar en MySQL Workbench, en este orden:
+
+1. sql/01_logeo.sql
+2. sql/02_crud_canchas.sql
 
 ## Tecnologías
 
