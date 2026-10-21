@@ -1,0 +1,3 @@
+db.url=jdbc:mysql://localhost:3306/sportcenter
+db.usuario=TU_USUARIO_MYSQL
+db.clave=TU_CONTRASENA_MYSQL
