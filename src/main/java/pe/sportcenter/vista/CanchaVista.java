@@ -4,6 +4,7 @@ import pe.sportcenter.controlador.CanchaControlador;
 import pe.sportcenter.modelo.Cancha;
 import pe.sportcenter.modelo.DeporteCancha;
 import pe.sportcenter.modelo.EstadoCancha;
+import pe.sportcenter.modelo.CanchaResumen;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -43,6 +44,8 @@ public class CanchaVista extends JDialog {
     private final JButton botonGuardar = new JButton("Guardar");
     private final JButton botonEliminar = new JButton("Eliminar");
     private final JButton botonConsultar = new JButton("Consultar");
+    private final JButton botonResumen =
+            new JButton("Alquileres por cancha");
 
     private final JLabel mensaje = new JLabel(" ");
 
@@ -78,6 +81,7 @@ public class CanchaVista extends JDialog {
         }
 
         barra.add(botonConsultar);
+        barra.add(botonResumen);
         contenido.add(barra, BorderLayout.NORTH);
 
         tabla.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
@@ -115,6 +119,7 @@ public class CanchaVista extends JDialog {
         botonGuardar.addActionListener(e -> guardar());
         botonEliminar.addActionListener(e -> eliminar());
         botonConsultar.addActionListener(e -> consultar());
+        botonResumen.addActionListener(e -> consultarResumenAlquileres());
 
         addWindowListener(new WindowAdapter() {
             @Override
@@ -191,7 +196,6 @@ public class CanchaVista extends JDialog {
         }
 
         try {
-            // Se leen los componentes antes de iniciar el trabajo de fondo.
             String nombre = campoNombre.getText();
             DeporteCancha deporte =
                     (DeporteCancha) campoDeporte.getSelectedItem();
@@ -365,6 +369,124 @@ public class CanchaVista extends JDialog {
         tarea.execute();
     }
 
+    private void consultarResumenAlquileres() {
+        if (ocupado || editando) {
+            return;
+        }
+
+        ocupado = true;
+        actualizarControles();
+        mensaje.setText("Consultando alquileres por cancha...");
+
+        SwingWorker<List<CanchaResumen>, Void> tarea = new SwingWorker<>() {
+
+            @Override
+            protected List<CanchaResumen> doInBackground() throws Exception {
+                return controlador.listarResumenAlquileres();
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    List<CanchaResumen> resumenes = get();
+
+                    DefaultTableModel modeloResumen = new DefaultTableModel(
+                            new Object[]{
+                                    "ID", "Cancha", "Deporte",
+                                    "Estado", "Total de alquileres"
+                            }, 0) {
+
+                        @Override
+                        public boolean isCellEditable(int fila, int columna) {
+                            return false;
+                        }
+                    };
+
+                    for (CanchaResumen resumen : resumenes) {
+                        Cancha cancha = resumen.getCancha();
+
+                        modeloResumen.addRow(new Object[]{
+                                cancha.getIdCancha(),
+                                cancha.getNombre(),
+                                cancha.getDeporte().valorBD(),
+                                cancha.getEstado().valorBD(),
+                                resumen.getCantidadAlquileres()
+                        });
+                    }
+
+                    JTable tablaResumen = new JTable(modeloResumen);
+                    tablaResumen.setRowHeight(26);
+                    tablaResumen.setFillsViewportHeight(true);
+
+                    JDialog ventana = new JDialog(
+                            CanchaVista.this,
+                            "Sport Center - Alquileres por cancha",
+                            true
+                    );
+
+                    ventana.setDefaultCloseOperation(
+                            WindowConstants.DISPOSE_ON_CLOSE);
+
+                    JPanel contenido = new JPanel(new BorderLayout(10, 10));
+                    contenido.setBorder(new EmptyBorder(15, 15, 15, 15));
+
+                    contenido.add(
+                            new JLabel(
+                                    "Total histórico: incluye alquileres "
+                                            + "confirmados, cancelados y completados."),
+                            BorderLayout.NORTH
+                    );
+
+                    contenido.add(
+                            new JScrollPane(tablaResumen),
+                            BorderLayout.CENTER
+                    );
+
+                    JButton botonCerrar = new JButton("Cerrar");
+                    botonCerrar.addActionListener(e -> ventana.dispose());
+
+                    JPanel pie = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+                    pie.add(botonCerrar);
+                    contenido.add(pie, BorderLayout.SOUTH);
+
+                    ventana.setContentPane(contenido);
+                    ventana.setSize(750, 400);
+                    ventana.setLocationRelativeTo(CanchaVista.this);
+
+                    mensaje.setText(
+                            "Resumen consultado. Canchas: " + resumenes.size());
+
+                    ventana.setVisible(true);
+
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    mensaje.setText("Consulta interrumpida.");
+                    mostrarError("La consulta fue interrumpida.");
+
+                } catch (ExecutionException e) {
+                    Throwable causa = e.getCause();
+
+                    mensaje.setText("No se pudo consultar el resumen.");
+
+                    if (causa instanceof SecurityException
+                            || causa instanceof IllegalArgumentException) {
+                        mostrarError(causa.getMessage());
+                    } else {
+                        mostrarError(
+                                "No se pudo consultar el resumen de alquileres.");
+                        causa.printStackTrace();
+                    }
+
+                } finally {
+                    ocupado = false;
+                    actualizarControles();
+                }
+            }
+        };
+
+        tarea.execute();
+    }
+
     private void limpiarFormulario() {
         campoNombre.setText("");
         campoTarifa.setText("");
@@ -387,6 +509,7 @@ public class CanchaVista extends JDialog {
         botonGuardar.setEnabled(puedeEditar);
         botonEliminar.setEnabled(administrador && !ocupado && !editando);
         botonConsultar.setEnabled(!ocupado);
+        botonResumen.setEnabled(!ocupado && !editando);
     }
 
     private void mostrarError(String texto) {

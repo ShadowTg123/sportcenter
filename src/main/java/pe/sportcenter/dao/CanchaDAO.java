@@ -1,6 +1,8 @@
+
 package pe.sportcenter.dao;
 
 import pe.sportcenter.modelo.Cancha;
+import pe.sportcenter.modelo.CanchaResumen;
 
 import java.io.IOException;
 import java.sql.SQLException;
@@ -18,5 +20,8 @@ public interface CanchaDAO {
             throws SQLException, IOException;
 
     boolean eliminarFisicamente(int idCancha)
+            throws SQLException, IOException;
+
+    List<CanchaResumen> listarConCantidadAlquileres()
             throws SQLException, IOException;
 }

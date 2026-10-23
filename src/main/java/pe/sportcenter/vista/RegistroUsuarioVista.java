@@ -53,7 +53,7 @@ public class RegistroUsuarioVista extends JDialog {
         formulario.add(new JLabel("Usuario (4 a 30 caracteres):"));
         formulario.add(campoUsuario);
 
-        formulario.add(new JLabel("Contraseña (8 a 128, letras y números):"));
+        formulario.add(new JLabel("<html>Contraseña (8 a 128 caracteres):<br>Mayúscula, minúscula, número y símbolo.</html>"));
         formulario.add(campoClave);
 
         formulario.add(new JLabel("Confirmar contraseña:"));

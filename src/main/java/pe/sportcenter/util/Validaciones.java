@@ -51,8 +51,13 @@ public final class Validaciones {
                     "La contraseña debe tener entre 8 y 128 caracteres.");
         }
 
-        boolean tieneLetra = false;
+        boolean tieneMinuscula = false;
+        boolean tieneMayuscula = false;
         boolean tieneNumero = false;
+        boolean tieneSimbolo = false;
+
+        // Símbolos que se consideran válidos para cumplir el requisito.
+        String simbolos = "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~";
 
         for (char caracter : clave) {
             if (Character.isISOControl(caracter)) {
@@ -60,18 +65,29 @@ public final class Validaciones {
                         "La contraseña contiene caracteres no permitidos.");
             }
 
-            if (Character.isLetter(caracter)) {
-                tieneLetra = true;
+            if (Character.isLowerCase(caracter)) {
+                tieneMinuscula = true;
+            }
+
+            if (Character.isUpperCase(caracter)) {
+                tieneMayuscula = true;
             }
 
             if (Character.isDigit(caracter)) {
                 tieneNumero = true;
             }
+
+            if (simbolos.indexOf(caracter) >= 0) {
+                tieneSimbolo = true;
+            }
         }
 
-        if (!tieneLetra || !tieneNumero) {
+        if (!tieneMinuscula || !tieneMayuscula
+                || !tieneNumero || !tieneSimbolo) {
             throw new IllegalArgumentException(
-                    "La contraseña debe incluir letras y números.");
+                    "La contraseña debe incluir al menos una letra minúscula, "
+                            + "una letra mayúscula, un número y un símbolo "
+                            + "especial (por ejemplo: !, @, # o $).");
         }
     }
 }

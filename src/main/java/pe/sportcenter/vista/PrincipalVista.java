@@ -5,6 +5,12 @@ import pe.sportcenter.modelo.Rol;
 import pe.sportcenter.modelo.Usuario;
 import pe.sportcenter.controlador.CanchaControlador;
 import pe.sportcenter.dao.CanchaDAOImpl;
+import pe.sportcenter.controlador.ClienteControlador;
+import pe.sportcenter.dao.ClienteDAOImpl;
+import pe.sportcenter.controlador.AlquilerControlador;
+import pe.sportcenter.dao.AlquilerDAOImpl;
+import pe.sportcenter.dao.CanchaDAOImpl;
+import pe.sportcenter.dao.ClienteDAOImpl;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -50,6 +56,9 @@ public class PrincipalVista extends JFrame {
                         ? "Gestionar canchas"
                         : "Consultar canchas"
         );
+        JButton botonClientes = new JButton("Clientes");
+        JButton botonAlquileres = new JButton("Alquileres");
+        JButton botonReportes = new JButton("Reportes de alquileres");
         JButton botonCerrar = new JButton("Cerrar sesión");
 
         menu.add(botonInicio);
@@ -65,6 +74,9 @@ public class PrincipalVista extends JFrame {
         }
 
         menu.add(botonCanchas);
+        menu.add(botonClientes);
+        menu.add(botonAlquileres);
+        menu.add(botonReportes);
         menu.add(botonCerrar);
 
         JPanel lateral = new JPanel(new BorderLayout());
@@ -98,6 +110,52 @@ public class PrincipalVista extends JFrame {
 
             ventana.setVisible(true);
         });
+
+
+        botonClientes.addActionListener(e -> {
+
+            ClienteControlador clienteControlador =
+                    new ClienteControlador(
+                            new ClienteDAOImpl(),
+                            controlador
+                    );
+
+            ClienteVista ventana =
+                    new ClienteVista(this, clienteControlador);
+
+            ventana.setVisible(true);
+        });
+
+
+        botonAlquileres.addActionListener(e -> {
+
+            AlquilerControlador alquilerControlador =
+                    new AlquilerControlador(
+                            new AlquilerDAOImpl(),
+                            new CanchaDAOImpl(),
+                            new ClienteDAOImpl(),
+                            controlador
+                    );
+
+            new AlquilerVista(this, alquilerControlador).setVisible(true);
+        });
+
+        botonReportes.addActionListener(e -> {
+
+            AlquilerControlador alquilerControlador =
+                    new AlquilerControlador(
+                            new AlquilerDAOImpl(),
+                            new CanchaDAOImpl(),
+                            new ClienteDAOImpl(),
+                            controlador
+                    );
+
+            new ReporteAlquilerVista(
+                    this,
+                    alquilerControlador
+            ).setVisible(true);
+        });
+
 
         botonCerrar.addActionListener(e -> cerrarSesion());
 

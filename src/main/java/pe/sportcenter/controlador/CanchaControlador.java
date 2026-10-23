@@ -6,6 +6,7 @@ import pe.sportcenter.modelo.DeporteCancha;
 import pe.sportcenter.modelo.EstadoCancha;
 import pe.sportcenter.modelo.Rol;
 import pe.sportcenter.modelo.Usuario;
+import pe.sportcenter.modelo.CanchaResumen;
 
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -42,6 +43,25 @@ public class CanchaControlador {
 
         return canchas;
     }
+
+    public List<CanchaResumen> listarResumenAlquileres()
+            throws SQLException, IOException {
+
+        Usuario usuario = exigirSesion();
+
+        List<CanchaResumen> resumenes =
+                canchaDAO.listarConCantidadAlquileres();
+
+        if (usuario.getRol() == Rol.RECEPCIONISTA) {
+            return resumenes.stream()
+                    .filter(r -> r.getCancha().getEstado()
+                            != EstadoCancha.INACTIVA)
+                    .toList();
+        }
+
+        return resumenes;
+    }
+
 
     public void registrar(
             String nombre,
