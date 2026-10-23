@@ -48,6 +48,8 @@ public class AlquilerVista extends JDialog {
     private final JButton botonCancelar = new JButton("Cancelar alquiler");
     private final JButton botonCompletar = new JButton("Completar alquiler");
     private final JButton botonCerrar = new JButton("Cerrar");
+    private final JButton botonDisponibilidad =
+            new JButton("Ver disponibilidad");
 
     private final JLabel mensaje = new JLabel(" ");
 
@@ -118,6 +120,9 @@ public class AlquilerVista extends JDialog {
         formulario.add(new JLabel("Hora final (HH:mm, mismo día):"));
         formulario.add(campoFin);
 
+        formulario.add(new JLabel("Canchas libres en este horario:"));
+        formulario.add(botonDisponibilidad);
+
         JPanel botones = new JPanel(new FlowLayout(FlowLayout.LEFT));
         botones.add(botonRegistrar);
         botones.add(botonConsultar);
@@ -141,6 +146,8 @@ public class AlquilerVista extends JDialog {
         setContentPane(contenido);
 
         botonConsultar.addActionListener(e -> consultar());
+        botonDisponibilidad.addActionListener(
+                e -> consultarDisponibilidad());
         botonRegistrar.addActionListener(e -> registrar());
         botonCancelar.addActionListener(e -> cancelar());
         botonCompletar.addActionListener(e -> completar());
@@ -264,6 +271,110 @@ public class AlquilerVista extends JDialog {
         mensaje.setText(
                 "Fecha consultada: " + fecha.format(FORMATO_FECHA)
                         + " | Alquileres: " + alquileres.size());
+    }
+
+    // RF06: mostrar canchas libres para la fecha y horario indicados.
+    private void consultarDisponibilidad() {
+        if (ocupado) {
+            return;
+        }
+
+        try {
+            LocalDate fecha = leerFecha();
+            LocalTime inicio = leerHora(campoInicio, "inicial");
+            LocalTime fin = leerHora(campoFin, "final");
+
+            ejecutar(
+                    () -> controlador.consultarDisponibilidad(
+                            fecha, inicio, fin),
+                    disponibles -> {
+                        String horario = fecha.format(FORMATO_FECHA)
+                                + " | "
+                                + inicio.format(FORMATO_HORA)
+                                + " a "
+                                + fin.format(FORMATO_HORA);
+
+                        mensaje.setText(
+                                "Disponibilidad consultada: " + horario
+                                        + " | Canchas libres: "
+                                        + disponibles.size());
+
+                        if (disponibles.isEmpty()) {
+                            JOptionPane.showMessageDialog(
+                                    this,
+                                    "No hay canchas disponibles para:\n"
+                                            + horario,
+                                    "Disponibilidad",
+                                    JOptionPane.INFORMATION_MESSAGE
+                            );
+                            return;
+                        }
+
+                        DefaultTableModel modeloDisponibles =
+                                new DefaultTableModel(
+                                        new Object[]{
+                                                "ID", "Cancha",
+                                                "Deporte", "Tarifa S/ por hora"
+                                        }, 0) {
+
+                                    @Override
+                                    public boolean isCellEditable(
+                                            int fila, int columna) {
+                                        return false;
+                                    }
+                                };
+
+                        for (Cancha cancha : disponibles) {
+                            modeloDisponibles.addRow(new Object[]{
+                                    cancha.getIdCancha(),
+                                    cancha.getNombre(),
+                                    cancha.getDeporte(),
+                                    cancha.getTarifaHora()
+                            });
+                        }
+
+                        JTable tablaDisponibles =
+                                new JTable(modeloDisponibles);
+
+                        tablaDisponibles.setRowHeight(26);
+                        tablaDisponibles.setFillsViewportHeight(true);
+
+                        JScrollPane desplazamiento =
+                                new JScrollPane(tablaDisponibles);
+
+                        desplazamiento.setPreferredSize(
+                                new Dimension(600, 220));
+
+                        JPanel panel = new JPanel(
+                                new BorderLayout(8, 8));
+
+                        panel.add(
+                                new JLabel("Horario consultado: " + horario),
+                                BorderLayout.NORTH);
+
+                        panel.add(
+                                desplazamiento,
+                                BorderLayout.CENTER);
+
+                        panel.add(
+                                new JLabel(
+                                        "La disponibilidad se verifica "
+                                                + "nuevamente al registrar."),
+                                BorderLayout.SOUTH);
+
+                        JOptionPane.showMessageDialog(
+                                this,
+                                panel,
+                                "Canchas disponibles",
+                                JOptionPane.INFORMATION_MESSAGE
+                        );
+                    },
+                    "Consultando disponibilidad..."
+            );
+
+        } catch (IllegalArgumentException e) {
+            mostrarError(e.getMessage());
+        }
     }
 
     private void registrar() {
@@ -516,6 +627,7 @@ public class AlquilerVista extends JDialog {
 
         botonRegistrar.setEnabled(!valor);
         botonConsultar.setEnabled(!valor);
+        botonDisponibilidad.setEnabled(!valor);
         botonCancelar.setEnabled(!valor);
         botonCompletar.setEnabled(!valor);
         botonCerrar.setEnabled(!valor);

@@ -10,6 +10,7 @@ import pe.sportcenter.modelo.EstadoCancha;
 import pe.sportcenter.modelo.Rol;
 import pe.sportcenter.modelo.Usuario;
 import pe.sportcenter.modelo.ResumenAlquiler;
+import pe.sportcenter.util.ReglasAlquiler;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -53,12 +54,27 @@ public class AlquilerControlador {
 
         exigirPermiso();
 
-        // El horario se comprobará al registrar.
-        // Aquí solo filtramos el estado general de la cancha.
         return canchaDAO.listarTodas().stream()
                 .filter(cancha ->
-                        cancha.getEstado() == EstadoCancha.DISPONIBLE)
+                        cancha.getEstado() == EstadoCancha.DISPONIBLE
+                                || cancha.getEstado() == EstadoCancha.ALQUILADA)
                 .toList();
+    }
+
+    // RF06: consultar disponibilidad por fecha y horario.
+    public List<Cancha> consultarDisponibilidad(
+            LocalDate fecha,
+            LocalTime horaInicio,
+            LocalTime horaFin)
+            throws SQLException, IOException {
+
+        exigirPermiso();
+
+        validarFecha(fecha);
+        validarHorario(horaInicio, horaFin);
+
+        return alquilerDAO.listarDisponibles(
+                fecha, horaInicio, horaFin);
     }
 
     public List<Cliente> listarClientes()
@@ -241,24 +257,6 @@ public class AlquilerControlador {
             LocalTime horaInicio,
             LocalTime horaFin) {
 
-        if (horaInicio == null || horaFin == null) {
-            throw new IllegalArgumentException(
-                    "Las horas de inicio y fin son obligatorias.");
-        }
-
-        if (!horaFin.isAfter(horaInicio)) {
-            throw new IllegalArgumentException(
-                    "La hora final debe ser posterior a la inicial "
-                            + "dentro del mismo día.");
-        }
-
-        if (horaInicio.getSecond() != 0
-                || horaFin.getSecond() != 0
-                || horaInicio.getNano() != 0
-                || horaFin.getNano() != 0) {
-
-            throw new IllegalArgumentException(
-                    "Ingrese las horas sin segundos.");
-        }
+        ReglasAlquiler.validarHorario(horaInicio, horaFin);
     }
 }

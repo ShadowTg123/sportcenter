@@ -4,6 +4,11 @@ import pe.sportcenter.modelo.Alquiler;
 import pe.sportcenter.modelo.EstadoAlquiler;
 import pe.sportcenter.util.Conexion;
 import pe.sportcenter.modelo.ResumenAlquiler;
+import pe.sportcenter.util.ReglasAlquiler;
+import pe.sportcenter.modelo.Cancha;
+import pe.sportcenter.modelo.DeporteCancha;
+import pe.sportcenter.modelo.EstadoCancha;
+import pe.sportcenter.util.ReglasAlquiler;
 
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -52,6 +57,72 @@ public class AlquilerDAOImpl implements AlquilerDAO {
         }
 
         return alquileres;
+    }
+
+    // RF06: listar canchas disponibles por fecha y horario.
+    @Override
+    public List<Cancha> listarDisponibles(
+            LocalDate fecha,
+            LocalTime horaInicio,
+            LocalTime horaFin)
+            throws SQLException, IOException {
+
+        if (fecha == null) {
+            throw new IllegalArgumentException(
+                    "Seleccione una fecha.");
+        }
+
+        if (fecha.getYear() < 1000 || fecha.getYear() > 9999) {
+            throw new IllegalArgumentException(
+                    "El año debe estar entre 1000 y 9999.");
+        }
+
+        ReglasAlquiler.validarHorario(horaInicio, horaFin);
+
+        String sql = """
+            SELECT c.idCancha, c.nombre, c.deporte,
+                   c.tarifaHora, c.estado
+            FROM CANCHA c
+            WHERE c.estado IN ('disponible', 'alquilada')
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM ALQUILER a
+                  WHERE a.idCancha = c.idCancha
+                    AND a.fecha = ?
+                    AND a.estado IN ('confirmado', 'completado')
+                    AND a.horaInicio < ?
+                    AND a.horaFin > ?
+              )
+            ORDER BY c.idCancha
+            """;
+
+        List<Cancha> disponibles = new ArrayList<>();
+
+        try (Connection conexion =
+                     Conexion.getInstancia().abrirConexion();
+             PreparedStatement consulta =
+                     conexion.prepareStatement(sql)) {
+
+            consulta.setDate(1, Date.valueOf(fecha));
+            consulta.setTime(2, Time.valueOf(horaFin));
+            consulta.setTime(3, Time.valueOf(horaInicio));
+
+            try (ResultSet resultado = consulta.executeQuery()) {
+                while (resultado.next()) {
+                    disponibles.add(new Cancha(
+                            resultado.getInt("idCancha"),
+                            resultado.getString("nombre"),
+                            DeporteCancha.desdeBD(
+                                    resultado.getString("deporte")),
+                            resultado.getBigDecimal("tarifaHora"),
+                            EstadoCancha.desdeBD(
+                                    resultado.getString("estado"))
+                    ));
+                }
+            }
+        }
+
+        return disponibles;
     }
 
     @Override
@@ -161,10 +232,12 @@ public class AlquilerDAOImpl implements AlquilerDAO {
 
                 String estado = resultado.getString("estado");
 
-                if (!"disponible".equals(estado)) {
+                if (!"disponible".equals(estado)
+                        && !"alquilada".equals(estado)) {
+
                     throw new IllegalArgumentException(
-                            "Solo se pueden registrar alquileres "
-                                    + "para canchas en estado disponible.");
+                            "La cancha no está habilitada para alquileres. "
+                                    + "Puede estar en mantenimiento o inactiva.");
                 }
 
                 BigDecimal tarifa = resultado.getBigDecimal("tarifaHora");
@@ -342,30 +415,22 @@ public class AlquilerDAOImpl implements AlquilerDAO {
 
         if (idCancha <= 0 || idCliente <= 0 || idUsuario <= 0) {
             throw new IllegalArgumentException(
-                    "La cancha, el cliente y el usuario deben ser válidos.");
+                    "La cancha, el cliente y el usuario deben ser validos.");
         }
 
-        if (fecha == null || horaInicio == null || horaFin == null) {
+        if (fecha == null) {
             throw new IllegalArgumentException(
-                    "La fecha y las horas son obligatorias.");
+                    "La fecha es obligatoria.");
         }
 
-        if (!horaFin.isAfter(horaInicio)) {
+        if (fecha.getYear() < 1000 || fecha.getYear() > 9999) {
             throw new IllegalArgumentException(
-                    "La hora final debe ser posterior a la inicial "
-                            + "dentro del mismo día.");
+                    "La fecha debe tener un anio entre 1000 y 9999.");
         }
 
-        // Trabajamos con horas y minutos, sin segundos.
-        if (horaInicio.getSecond() != 0
-                || horaFin.getSecond() != 0
-                || horaInicio.getNano() != 0
-                || horaFin.getNano() != 0) {
-
-            throw new IllegalArgumentException(
-                    "Ingrese las horas con precisión de minutos.");
-        }
+        ReglasAlquiler.validarHorario(horaInicio, horaFin);
     }
+
 
 
     @Override

@@ -2,6 +2,7 @@ package pe.sportcenter.dao;
 
 import pe.sportcenter.modelo.Alquiler;
 import pe.sportcenter.modelo.ResumenAlquiler;
+import pe.sportcenter.modelo.Cancha;
 
 import java.io.IOException;
 import java.sql.SQLException;
@@ -33,5 +34,12 @@ public interface AlquilerDAO {
             throws SQLException, IOException;
 
     boolean completar(int idAlquiler, LocalDateTime ahora)
+            throws SQLException, IOException;
+
+    // RF06: consulta las canchas libres en una fecha y horario.
+    List<Cancha> listarDisponibles(
+            LocalDate fecha,
+            LocalTime horaInicio,
+            LocalTime horaFin)
             throws SQLException, IOException;
 }
