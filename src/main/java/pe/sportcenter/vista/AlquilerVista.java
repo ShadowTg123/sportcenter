@@ -14,6 +14,7 @@ import java.awt.*;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -48,6 +49,14 @@ public class AlquilerVista extends JDialog {
     private final JButton botonCancelar = new JButton("Cancelar alquiler");
     private final JButton botonCompletar = new JButton("Completar alquiler");
     private final JButton botonCerrar = new JButton("Cerrar");
+    private final JButton botonCargarEdicion =
+            new JButton("Cargar para modificar");
+    private final JButton botonModificar =
+            new JButton("Modificar alquiler");
+    private final JButton botonNuevo =
+            new JButton("Nuevo alquiler");
+    private final JLabel etiquetaModo =
+            new JLabel("Modo: nuevo alquiler");
     private final JButton botonDisponibilidad =
             new JButton("Ver disponibilidad");
 
@@ -69,7 +78,10 @@ public class AlquilerVista extends JDialog {
     private final JTable tabla = new JTable(modeloTabla);
 
     private List<Alquiler> alquileres = List.of();
+    private Alquiler alquilerEnEdicion;
     private boolean ocupado;
+
+    private static final ZoneId ZONA = ZoneId.of("America/Lima");
 
     // Agrupa los resultados de una consulta.
     private record Datos(
@@ -86,8 +98,8 @@ public class AlquilerVista extends JDialog {
         this.controlador = controlador;
 
         setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
-        setSize(1100, 600);
-        setMinimumSize(new Dimension(900, 500));
+        setSize(1100, 660);
+        setMinimumSize(new Dimension(900, 550));
         setLocationRelativeTo(propietario);
 
         campoFecha.setText(
@@ -123,12 +135,23 @@ public class AlquilerVista extends JDialog {
         formulario.add(new JLabel("Canchas libres en este horario:"));
         formulario.add(botonDisponibilidad);
 
-        JPanel botones = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        botones.add(botonRegistrar);
-        botones.add(botonConsultar);
-        botones.add(botonCancelar);
-        botones.add(botonCompletar);
-        botones.add(botonCerrar);
+        // Separamos las acciones para evitar que se amontonen.
+        JPanel acciones = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        acciones.add(botonRegistrar);
+        acciones.add(botonConsultar);
+        acciones.add(botonCancelar);
+        acciones.add(botonCompletar);
+        acciones.add(botonCerrar);
+
+        JPanel accionesEdicion = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        accionesEdicion.add(botonCargarEdicion);
+        accionesEdicion.add(botonModificar);
+        accionesEdicion.add(botonNuevo);
+        accionesEdicion.add(etiquetaModo);
+
+        JPanel botones = new JPanel(new GridLayout(2, 1, 0, 2));
+        botones.add(acciones);
+        botones.add(accionesEdicion);
 
         JPanel superior = new JPanel(new BorderLayout(5, 5));
         superior.add(formulario, BorderLayout.CENTER);
@@ -149,6 +172,9 @@ public class AlquilerVista extends JDialog {
         botonDisponibilidad.addActionListener(
                 e -> consultarDisponibilidad());
         botonRegistrar.addActionListener(e -> registrar());
+        botonCargarEdicion.addActionListener(e -> cargarParaModificar());
+        botonModificar.addActionListener(e -> modificar());
+        botonNuevo.addActionListener(e -> prepararNuevoAlquiler());
         botonCancelar.addActionListener(e -> cancelar());
         botonCompletar.addActionListener(e -> completar());
         botonCerrar.addActionListener(e -> cerrar());
@@ -160,6 +186,7 @@ public class AlquilerVista extends JDialog {
             }
         });
 
+        actualizarModo();
         consultar();
     }
 
@@ -228,6 +255,9 @@ public class AlquilerVista extends JDialog {
     }
 
     private void mostrarDatos(Datos datos, LocalDate fecha) {
+        // La consulta actualiza las listas y termina cualquier edición anterior.
+        alquilerEnEdicion = null;
+        tabla.clearSelection();
         comboClientes.removeAllItems();
 
         for (Cliente cliente : datos.clientes()) {
@@ -268,6 +298,7 @@ public class AlquilerVista extends JDialog {
             });
         }
 
+        actualizarModo();
         mensaje.setText(
                 "Fecha consultada: " + fecha.format(FORMATO_FECHA)
                         + " | Alquileres: " + alquileres.size());
@@ -358,8 +389,9 @@ public class AlquilerVista extends JDialog {
 
                         panel.add(
                                 new JLabel(
-                                        "La disponibilidad se verifica "
-                                                + "nuevamente al registrar."),
+                                        alquilerEnEdicion == null
+                                                ? "La disponibilidad se verifica nuevamente al registrar."
+                                                : "Al modificar, el propio alquiler se excluye del cruce."),
                                 BorderLayout.SOUTH);
 
                         JOptionPane.showMessageDialog(
@@ -375,6 +407,181 @@ public class AlquilerVista extends JDialog {
         } catch (IllegalArgumentException e) {
             mostrarError(e.getMessage());
         }
+    }
+
+    // RF07: carga un alquiler confirmado para editarlo sin crear otro registro.
+    private void cargarParaModificar() {
+        if (ocupado) {
+            return;
+        }
+
+        int filaVista = tabla.getSelectedRow();
+        if (filaVista < 0) {
+            mostrarError("Seleccione primero un alquiler de la tabla.");
+            return;
+        }
+
+        // La tabla admite ordenación por columnas: convertir el índice.
+        int filaModelo = tabla.convertRowIndexToModel(filaVista);
+        Alquiler seleccionado = alquileres.get(filaModelo);
+
+        if (seleccionado.getEstado() != EstadoAlquiler.CONFIRMADO) {
+            mostrarError("Solo se pueden modificar alquileres confirmados.");
+            return;
+        }
+
+        LocalDateTime inicioOriginal = LocalDateTime.of(
+                seleccionado.getFecha(), seleccionado.getHoraInicio());
+        if (!inicioOriginal.isAfter(LocalDateTime.now(ZONA))) {
+            mostrarError("No se puede modificar un alquiler que ya comenzó.");
+            return;
+        }
+
+        boolean clienteEncontrado = seleccionarCliente(
+                seleccionado.getIdCliente());
+        boolean canchaEncontrada = seleccionarCancha(
+                seleccionado.getIdCancha());
+
+        campoFecha.setText(seleccionado.getFecha().format(FORMATO_FECHA));
+        campoInicio.setText(seleccionado.getHoraInicio().format(FORMATO_HORA));
+        campoFin.setText(seleccionado.getHoraFin().format(FORMATO_HORA));
+
+        alquilerEnEdicion = seleccionado;
+        actualizarModo();
+        mensaje.setText("Editando alquiler ID " + seleccionado.getIdAlquiler()
+                + ". Cambie los datos y pulse 'Modificar alquiler'.");
+
+        // Una cancha antigua puede haber sido desactivada posteriormente.
+        if (!clienteEncontrado || !canchaEncontrada) {
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Alguno de los datos originales ya no está disponible.\n"
+                            + "Seleccione una cancha y un cliente válidos antes de modificar.",
+                    "Revisar selección",
+                    JOptionPane.INFORMATION_MESSAGE);
+        }
+    }
+
+    private boolean seleccionarCliente(int idCliente) {
+        for (int i = 0; i < comboClientes.getItemCount(); i++) {
+            if (comboClientes.getItemAt(i).getIdCliente() == idCliente) {
+                comboClientes.setSelectedIndex(i);
+                return true;
+            }
+        }
+        comboClientes.setSelectedIndex(-1);
+        return false;
+    }
+
+    private boolean seleccionarCancha(int idCancha) {
+        for (int i = 0; i < comboCanchas.getItemCount(); i++) {
+            if (comboCanchas.getItemAt(i).getIdCancha() == idCancha) {
+                comboCanchas.setSelectedIndex(i);
+                return true;
+            }
+        }
+        comboCanchas.setSelectedIndex(-1);
+        return false;
+    }
+
+    // RF07 y RF08: modifica el registro actual y recalcula su importe.
+    private void modificar() {
+        if (ocupado) {
+            return;
+        }
+
+        if (alquilerEnEdicion == null) {
+            mostrarError("Seleccione un alquiler y pulse 'Cargar para modificar'.");
+            return;
+        }
+
+        try {
+            Cancha cancha = (Cancha) comboCanchas.getSelectedItem();
+            Cliente cliente = (Cliente) comboClientes.getSelectedItem();
+
+            if (cancha == null || cliente == null) {
+                throw new IllegalArgumentException(
+                        "Seleccione una cancha y un cliente válidos.");
+            }
+
+            LocalDate fecha = leerFecha();
+            LocalTime inicio = leerHora(campoInicio, "inicial");
+            LocalTime fin = leerHora(campoFin, "final");
+            final int idAlquiler = alquilerEnEdicion.getIdAlquiler();
+
+            int confirmacion = JOptionPane.showConfirmDialog(
+                    this,
+                    "¿Modificar el alquiler ID " + idAlquiler + "?\n"
+                            + "Cancha: " + cancha.getNombre() + "\n"
+                            + "Cliente: " + cliente.getNombre() + "\n"
+                            + "Fecha: " + fecha.format(FORMATO_FECHA) + "\n"
+                            + "Horario: " + inicio.format(FORMATO_HORA)
+                            + " a " + fin.format(FORMATO_HORA) + "\n"
+                            + "El importe se recalculará automáticamente.",
+                    "Confirmar modificación",
+                    JOptionPane.YES_NO_OPTION,
+                    JOptionPane.QUESTION_MESSAGE);
+
+            if (confirmacion != JOptionPane.YES_OPTION) {
+                return;
+            }
+
+            ejecutar(
+                    () -> controlador.reprogramar(
+                            idAlquiler,
+                            cancha.getIdCancha(),
+                            cliente.getIdCliente(),
+                            fecha, inicio, fin),
+                    modificado -> {
+                        JOptionPane.showMessageDialog(
+                                this,
+                                "Alquiler modificado correctamente.\n"
+                                        + "ID conservado: " + modificado.getIdAlquiler()
+                                        + "\nNuevo monto: S/ "
+                                        + modificado.getMontoTotal().toPlainString(),
+                                "Modificación de alquiler",
+                                JOptionPane.INFORMATION_MESSAGE);
+                        // La fecha visible es ahora la nueva fecha del alquiler.
+                        // Se vuelve a consultar sin duplicar el registro.
+                        consultar();
+                    },
+                    "Modificando alquiler...");
+
+        } catch (IllegalArgumentException e) {
+            mostrarError(e.getMessage());
+        }
+    }
+
+    // Sale del modo edición y permite registrar una reserva distinta.
+    private void prepararNuevoAlquiler() {
+        if (ocupado) {
+            return;
+        }
+        alquilerEnEdicion = null;
+        tabla.clearSelection();
+        campoFecha.setText(LocalDate.now(ZONA)
+                .plusDays(1).format(FORMATO_FECHA));
+        campoInicio.setText("18:00");
+        campoFin.setText("19:00");
+        if (comboClientes.getItemCount() > 0) {
+            comboClientes.setSelectedIndex(0);
+        }
+        if (comboCanchas.getItemCount() > 0) {
+            comboCanchas.setSelectedIndex(0);
+        }
+        actualizarModo();
+        mensaje.setText("Modo de registro: puede crear un nuevo alquiler.");
+    }
+
+    private void actualizarModo() {
+        boolean editando = alquilerEnEdicion != null;
+        etiquetaModo.setText(editando
+                ? "Editando ID " + alquilerEnEdicion.getIdAlquiler()
+                : "Modo: nuevo alquiler");
+        botonRegistrar.setEnabled(!ocupado && !editando);
+        botonCargarEdicion.setEnabled(!ocupado);
+        botonModificar.setEnabled(!ocupado && editando);
+        botonNuevo.setEnabled(!ocupado && editando);
     }
 
     private void registrar() {
@@ -625,13 +832,13 @@ public class AlquilerVista extends JDialog {
         campoInicio.setEnabled(!valor);
         campoFin.setEnabled(!valor);
 
-        botonRegistrar.setEnabled(!valor);
         botonConsultar.setEnabled(!valor);
         botonDisponibilidad.setEnabled(!valor);
         botonCancelar.setEnabled(!valor);
         botonCompletar.setEnabled(!valor);
         botonCerrar.setEnabled(!valor);
         tabla.setEnabled(!valor);
+        actualizarModo();
 
         setCursor(Cursor.getPredefinedCursor(
                 valor ? Cursor.WAIT_CURSOR : Cursor.DEFAULT_CURSOR));

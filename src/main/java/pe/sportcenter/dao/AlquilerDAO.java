@@ -42,4 +42,14 @@ public interface AlquilerDAO {
             LocalTime horaInicio,
             LocalTime horaFin)
             throws SQLException, IOException;
+
+    // RF07 y RF08: modificar un alquiler y recalcular su importe.
+    Alquiler reprogramar(
+            int idAlquiler,
+            int idCancha,
+            int idCliente,
+            LocalDate fecha,
+            LocalTime horaInicio,
+            LocalTime horaFin)
+            throws SQLException, IOException;
 }

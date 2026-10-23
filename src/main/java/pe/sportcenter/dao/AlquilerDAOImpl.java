@@ -1,13 +1,12 @@
 package pe.sportcenter.dao;
 
 import pe.sportcenter.modelo.Alquiler;
-import pe.sportcenter.modelo.EstadoAlquiler;
-import pe.sportcenter.util.Conexion;
-import pe.sportcenter.modelo.ResumenAlquiler;
-import pe.sportcenter.util.ReglasAlquiler;
 import pe.sportcenter.modelo.Cancha;
 import pe.sportcenter.modelo.DeporteCancha;
+import pe.sportcenter.modelo.EstadoAlquiler;
 import pe.sportcenter.modelo.EstadoCancha;
+import pe.sportcenter.modelo.ResumenAlquiler;
+import pe.sportcenter.util.Conexion;
 import pe.sportcenter.util.ReglasAlquiler;
 
 import java.io.IOException;
@@ -20,8 +19,11 @@ import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 public class AlquilerDAOImpl implements AlquilerDAO {
+
+    private static final ZoneId ZONA = ZoneId.of("America/Lima");
 
     @Override
     public List<Alquiler> listarPorFecha(LocalDate fecha)
@@ -59,7 +61,7 @@ public class AlquilerDAOImpl implements AlquilerDAO {
         return alquileres;
     }
 
-    // RF06: listar canchas disponibles por fecha y horario.
+    // RF06: consultar canchas habilitadas que no tengan un alquiler superpuesto.
     @Override
     public List<Cancha> listarDisponibles(
             LocalDate fecha,
@@ -67,41 +69,30 @@ public class AlquilerDAOImpl implements AlquilerDAO {
             LocalTime horaFin)
             throws SQLException, IOException {
 
-        if (fecha == null) {
-            throw new IllegalArgumentException(
-                    "Seleccione una fecha.");
-        }
-
-        if (fecha.getYear() < 1000 || fecha.getYear() > 9999) {
-            throw new IllegalArgumentException(
-                    "El año debe estar entre 1000 y 9999.");
-        }
-
+        validarFecha(fecha);
         ReglasAlquiler.validarHorario(horaInicio, horaFin);
 
         String sql = """
-            SELECT c.idCancha, c.nombre, c.deporte,
-                   c.tarifaHora, c.estado
-            FROM CANCHA c
-            WHERE c.estado IN ('disponible', 'alquilada')
-              AND NOT EXISTS (
-                  SELECT 1
-                  FROM ALQUILER a
-                  WHERE a.idCancha = c.idCancha
-                    AND a.fecha = ?
-                    AND a.estado IN ('confirmado', 'completado')
-                    AND a.horaInicio < ?
-                    AND a.horaFin > ?
-              )
-            ORDER BY c.idCancha
-            """;
+                SELECT c.idCancha, c.nombre, c.deporte,
+                       c.tarifaHora, c.estado
+                FROM CANCHA c
+                WHERE c.estado IN ('disponible', 'alquilada')
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM ALQUILER a
+                      WHERE a.idCancha = c.idCancha
+                        AND a.fecha = ?
+                        AND a.estado IN ('confirmado', 'completado')
+                        AND a.horaInicio < ?
+                        AND a.horaFin > ?
+                  )
+                ORDER BY c.idCancha
+                """;
 
         List<Cancha> disponibles = new ArrayList<>();
 
-        try (Connection conexion =
-                     Conexion.getInstancia().abrirConexion();
-             PreparedStatement consulta =
-                     conexion.prepareStatement(sql)) {
+        try (Connection conexion = Conexion.getInstancia().abrirConexion();
+             PreparedStatement consulta = conexion.prepareStatement(sql)) {
 
             consulta.setDate(1, Date.valueOf(fecha));
             consulta.setTime(2, Time.valueOf(horaFin));
@@ -112,11 +103,9 @@ public class AlquilerDAOImpl implements AlquilerDAO {
                     disponibles.add(new Cancha(
                             resultado.getInt("idCancha"),
                             resultado.getString("nombre"),
-                            DeporteCancha.desdeBD(
-                                    resultado.getString("deporte")),
+                            DeporteCancha.desdeBD(resultado.getString("deporte")),
                             resultado.getBigDecimal("tarifaHora"),
-                            EstadoCancha.desdeBD(
-                                    resultado.getString("estado"))
+                            EstadoCancha.desdeBD(resultado.getString("estado"))
                     ));
                 }
             }
@@ -207,6 +196,129 @@ public class AlquilerDAOImpl implements AlquilerDAO {
         }
     }
 
+    // RF07: reprogramar un alquiler confirmado que aún no comienza.
+    // RF08: calcular el nuevo monto al cambiar cancha o duración.
+    @Override
+    public Alquiler reprogramar(
+            int idAlquiler,
+            int idCancha,
+            int idCliente,
+            LocalDate fecha,
+            LocalTime horaInicio,
+            LocalTime horaFin)
+            throws SQLException, IOException {
+
+        if (idAlquiler <= 0) {
+            throw new IllegalArgumentException("Seleccione un alquiler válido.");
+        }
+        if (idCancha <= 0 || idCliente <= 0) {
+            throw new IllegalArgumentException(
+                    "Seleccione una cancha y un cliente válidos.");
+        }
+        validarFecha(fecha);
+        ReglasAlquiler.validarHorario(horaInicio, horaFin);
+
+        LocalDateTime ahora = LocalDateTime.now(ZONA);
+        LocalDateTime nuevoInicio = LocalDateTime.of(fecha, horaInicio);
+        if (!nuevoInicio.isAfter(ahora)) {
+            throw new IllegalArgumentException(
+                    "El nuevo horario debe comenzar en el futuro.");
+        }
+
+        try (Connection conexion = Conexion.getInstancia().abrirConexion()) {
+            conexion.setAutoCommit(false);
+
+            try {
+                // Mantiene el bloqueo de la cancha durante toda la operación.
+                BigDecimal tarifaHora =
+                        obtenerTarifaYBloquearCancha(conexion, idCancha);
+
+                // Bloquea el alquiler para evitar que se modifique simultáneamente.
+                String sqlOriginal = """
+                        SELECT idUsuario, fecha, horaInicio, estado
+                        FROM ALQUILER
+                        WHERE idAlquiler = ?
+                        FOR UPDATE
+                        """;
+                int idUsuarioOriginal;
+
+                try (PreparedStatement consulta =
+                             conexion.prepareStatement(sqlOriginal)) {
+                    consulta.setInt(1, idAlquiler);
+
+                    try (ResultSet resultado = consulta.executeQuery()) {
+                        if (!resultado.next()) {
+                            throw new IllegalArgumentException(
+                                    "El alquiler no existe.");
+                        }
+                        if (!"confirmado".equals(resultado.getString("estado"))) {
+                            throw new IllegalArgumentException(
+                                    "Solo se pueden modificar alquileres confirmados.");
+                        }
+
+                        LocalDateTime inicioOriginal = LocalDateTime.of(
+                                resultado.getDate("fecha").toLocalDate(),
+                                resultado.getTime("horaInicio").toLocalTime()
+                        );
+                        if (!inicioOriginal.isAfter(ahora)) {
+                            throw new IllegalArgumentException(
+                                    "No se puede modificar un alquiler que ya comenzó.");
+                        }
+                        idUsuarioOriginal = resultado.getInt("idUsuario");
+                    }
+                }
+
+                // El alquiler que se modifica no debe chocar consigo mismo.
+                comprobarHorarioReprogramacion(
+                        conexion, idAlquiler, idCancha,
+                        fecha, horaInicio, horaFin);
+
+                long minutos =
+                        Duration.between(horaInicio, horaFin).toMinutes();
+                BigDecimal montoTotal = tarifaHora
+                        .multiply(BigDecimal.valueOf(minutos))
+                        .divide(BigDecimal.valueOf(60), 2, RoundingMode.HALF_UP);
+
+                String sqlActualizar = """
+                        UPDATE ALQUILER
+                        SET idCancha = ?, idCliente = ?, fecha = ?,
+                            horaInicio = ?, horaFin = ?, montoTotal = ?
+                        WHERE idAlquiler = ? AND estado = 'confirmado'
+                        """;
+
+                try (PreparedStatement actualizar =
+                             conexion.prepareStatement(sqlActualizar)) {
+                    actualizar.setInt(1, idCancha);
+                    actualizar.setInt(2, idCliente);
+                    actualizar.setDate(3, Date.valueOf(fecha));
+                    actualizar.setTime(4, Time.valueOf(horaInicio));
+                    actualizar.setTime(5, Time.valueOf(horaFin));
+                    actualizar.setBigDecimal(6, montoTotal);
+                    actualizar.setInt(7, idAlquiler);
+
+                    if (actualizar.executeUpdate() != 1) {
+                        throw new SQLException("No se pudo modificar el alquiler.");
+                    }
+                }
+
+                conexion.commit();
+                return new Alquiler(
+                        idAlquiler, idCancha, idCliente, idUsuarioOriginal,
+                        fecha, horaInicio, horaFin, montoTotal,
+                        EstadoAlquiler.CONFIRMADO
+                );
+
+            } catch (SQLException | RuntimeException e) {
+                try {
+                    conexion.rollback();
+                } catch (SQLException errorRollback) {
+                    e.addSuppressed(errorRollback);
+                }
+                throw e;
+            }
+        }
+    }
+
     private BigDecimal obtenerTarifaYBloquearCancha(
             Connection conexion,
             int idCancha) throws SQLException {
@@ -234,7 +346,6 @@ public class AlquilerDAOImpl implements AlquilerDAO {
 
                 if (!"disponible".equals(estado)
                         && !"alquilada".equals(estado)) {
-
                     throw new IllegalArgumentException(
                             "La cancha no está habilitada para alquileres. "
                                     + "Puede estar en mantenimiento o inactiva.");
@@ -287,6 +398,45 @@ public class AlquilerDAOImpl implements AlquilerDAO {
                     throw new IllegalArgumentException(
                             "La cancha ya tiene un alquiler "
                                     + "que se cruza con ese horario.");
+                }
+            }
+        }
+    }
+
+    // RF06: comprueba cruces excluyendo el alquiler que se está editando.
+    private void comprobarHorarioReprogramacion(
+            Connection conexion,
+            int idAlquiler,
+            int idCancha,
+            LocalDate fecha,
+            LocalTime horaInicio,
+            LocalTime horaFin) throws SQLException {
+
+        String sql = """
+                SELECT idAlquiler
+                FROM ALQUILER
+                WHERE idCancha = ?
+                  AND fecha = ?
+                  AND estado IN ('confirmado', 'completado')
+                  AND horaInicio < ?
+                  AND horaFin > ?
+                  AND idAlquiler <> ?
+                LIMIT 1
+                FOR UPDATE
+                """;
+
+        try (PreparedStatement consulta = conexion.prepareStatement(sql)) {
+            consulta.setInt(1, idCancha);
+            consulta.setDate(2, Date.valueOf(fecha));
+            consulta.setTime(3, Time.valueOf(horaFin));
+            consulta.setTime(4, Time.valueOf(horaInicio));
+            consulta.setInt(5, idAlquiler);
+
+            try (ResultSet resultado = consulta.executeQuery()) {
+                if (resultado.next()) {
+                    throw new IllegalArgumentException(
+                            "La cancha ya tiene otro alquiler que se cruza "
+                                    + "con ese horario.");
                 }
             }
         }
@@ -405,6 +555,7 @@ public class AlquilerDAOImpl implements AlquilerDAO {
     }
 
 
+    // RF07: los mismos horarios se validan en el controlador y en el DAO.
     private void validarDatos(
             int idCancha,
             int idCliente,
@@ -415,22 +566,22 @@ public class AlquilerDAOImpl implements AlquilerDAO {
 
         if (idCancha <= 0 || idCliente <= 0 || idUsuario <= 0) {
             throw new IllegalArgumentException(
-                    "La cancha, el cliente y el usuario deben ser validos.");
+                    "La cancha, el cliente y el usuario deben ser válidos.");
         }
 
-        if (fecha == null) {
-            throw new IllegalArgumentException(
-                    "La fecha es obligatoria.");
-        }
-
-        if (fecha.getYear() < 1000 || fecha.getYear() > 9999) {
-            throw new IllegalArgumentException(
-                    "La fecha debe tener un anio entre 1000 y 9999.");
-        }
-
+        validarFecha(fecha);
         ReglasAlquiler.validarHorario(horaInicio, horaFin);
     }
 
+    private void validarFecha(LocalDate fecha) {
+        if (fecha == null) {
+            throw new IllegalArgumentException("La fecha es obligatoria.");
+        }
+        if (fecha.getYear() < 1000 || fecha.getYear() > 9999) {
+            throw new IllegalArgumentException(
+                    "La fecha debe tener un año entre 1000 y 9999.");
+        }
+    }
 
 
     @Override

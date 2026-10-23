@@ -167,6 +167,65 @@ public class AlquilerControlador {
         return registrado;
     }
 
+    // RF07 y RF08: modificar un alquiler y recalcular su importe.
+    public Alquiler reprogramar(
+            int idAlquiler,
+            int idCancha,
+            int idCliente,
+            LocalDate fecha,
+            LocalTime horaInicio,
+            LocalTime horaFin)
+            throws SQLException, IOException {
+
+        Usuario usuario = exigirPermiso();
+
+        if (idAlquiler <= 0) {
+            throw new IllegalArgumentException(
+                    "Seleccione un alquiler válido.");
+        }
+
+        if (idCancha <= 0) {
+            throw new IllegalArgumentException(
+                    "Seleccione una cancha.");
+        }
+
+        if (idCliente <= 0) {
+            throw new IllegalArgumentException(
+                    "Seleccione un cliente.");
+        }
+
+        validarFecha(fecha);
+        validarHorario(horaInicio, horaFin);
+
+        LocalDateTime nuevoInicio =
+                LocalDateTime.of(fecha, horaInicio);
+
+        if (!nuevoInicio.isAfter(LocalDateTime.now(ZONA))) {
+            throw new IllegalArgumentException(
+                    "El nuevo horario debe comenzar en el futuro.");
+        }
+
+        Alquiler modificado = alquilerDAO.reprogramar(
+                idAlquiler,
+                idCancha,
+                idCliente,
+                fecha,
+                horaInicio,
+                horaFin
+        );
+
+        LOG.info(
+                "Alquiler reprogramado: idAlquiler={}, "
+                        + "idCancha={}, idUsuario={}, montoTotal={}",
+                modificado.getIdAlquiler(),
+                modificado.getIdCancha(),
+                usuario.getIdUsuario(),
+                modificado.getMontoTotal()
+        );
+
+        return modificado;
+    }
+
     public void cancelar(int idAlquiler)
             throws SQLException, IOException {
 
