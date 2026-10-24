@@ -5,17 +5,21 @@ import pe.sportcenter.dao.CanchaDAO;
 import pe.sportcenter.dao.ClienteDAO;
 import pe.sportcenter.modelo.Alquiler;
 import pe.sportcenter.modelo.Cancha;
+import pe.sportcenter.modelo.CanchaResumen;
+import pe.sportcenter.modelo.IngresoPorDiaSemana;
 import pe.sportcenter.modelo.Cliente;
 import pe.sportcenter.modelo.EstadoCancha;
 import pe.sportcenter.modelo.Rol;
 import pe.sportcenter.modelo.Usuario;
 import pe.sportcenter.modelo.ResumenAlquiler;
 import pe.sportcenter.util.ReglasAlquiler;
+import pe.sportcenter.modelo.OcupacionCancha;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.sql.SQLException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -25,6 +29,8 @@ import java.util.List;
 import java.util.Objects;
 
 public class AlquilerControlador {
+
+
 
     private static final Logger LOG =
             LoggerFactory.getLogger(AlquilerControlador.class);
@@ -47,6 +53,14 @@ public class AlquilerControlador {
         this.canchaDAO = Objects.requireNonNull(canchaDAO);
         this.clienteDAO = Objects.requireNonNull(clienteDAO);
         this.autenticacion = Objects.requireNonNull(autenticacion);
+    }
+
+    // RF10: incluye canchas inactivas para consultar su historial.
+    public List<Cancha> listarCanchasParaReporte()
+            throws SQLException, IOException {
+
+        exigirPermiso();
+        return canchaDAO.listarTodas();
     }
 
     public List<Cancha> listarCanchasHabilitadas()
@@ -94,9 +108,20 @@ public class AlquilerControlador {
         return alquilerDAO.listarPorFecha(fecha);
     }
 
+
     public List<ResumenAlquiler> resumirPorFechas(
             LocalDate desde,
             LocalDate hasta)
+            throws SQLException, IOException {
+
+        return resumirPorFechas(desde, hasta, null);
+    }
+
+    // RF10: resumen por fechas y cancha.
+    public List<ResumenAlquiler> resumirPorFechas(
+            LocalDate desde,
+            LocalDate hasta,
+            Integer idCancha)
             throws SQLException, IOException {
 
         exigirPermiso();
@@ -109,9 +134,85 @@ public class AlquilerControlador {
                     "La fecha inicial no puede ser posterior a la final.");
         }
 
-        return alquilerDAO.resumirPorFechas(desde, hasta);
+        if (idCancha != null && idCancha <= 0) {
+            throw new IllegalArgumentException(
+                    "Seleccione una cancha válida.");
+        }
+
+        return alquilerDAO.resumirPorFechas(
+                desde, hasta, idCancha);
     }
 
+
+
+    // RF10: identifica las canchas con mayor cantidad de alquileres
+    // confirmados y completados en el periodo. Conserva los empates.
+    public List<CanchaResumen> obtenerCanchasMasAlquiladas(
+            LocalDate desde,
+            LocalDate hasta)
+            throws SQLException, IOException {
+
+        exigirPermiso();
+        validarFecha(desde);
+        validarFecha(hasta);
+
+        if (desde.isAfter(hasta)) {
+            throw new IllegalArgumentException(
+                    "La fecha inicial no puede ser posterior a la final.");
+        }
+
+        List<CanchaResumen> resumenes =
+                alquilerDAO.resumirAlquileresPorCancha(desde, hasta);
+
+        if (resumenes.isEmpty()) {
+            return List.of();
+        }
+
+        long cantidadMaxima = resumenes.get(0).getCantidadAlquileres();
+
+        return resumenes.stream()
+                .filter(resumen ->
+                        resumen.getCantidadAlquileres() == cantidadMaxima)
+                .toList();
+    }
+
+    // RF10: dia(s) con mayores ingresos acumulados del periodo y cancha.
+    // Incluye todos los empates en el importe maximo.
+    public List<IngresoPorDiaSemana> obtenerDiasConMayoresIngresos(
+            LocalDate desde,
+            LocalDate hasta,
+            Integer idCancha)
+            throws SQLException, IOException {
+
+        exigirPermiso();
+        validarFecha(desde);
+        validarFecha(hasta);
+
+        if (desde.isAfter(hasta)) {
+            throw new IllegalArgumentException(
+                    "La fecha inicial no puede ser posterior a la final.");
+        }
+
+        if (idCancha != null && idCancha <= 0) {
+            throw new IllegalArgumentException(
+                    "Seleccione una cancha válida.");
+        }
+
+        List<IngresoPorDiaSemana> ingresos =
+                alquilerDAO.resumirIngresosPorDiaSemana(
+                        desde, hasta, idCancha);
+
+        if (ingresos.isEmpty()) {
+            return List.of();
+        }
+
+        BigDecimal montoMaximo = ingresos.get(0).montoTotal();
+
+        return ingresos.stream()
+                .filter(ingreso ->
+                        ingreso.montoTotal().compareTo(montoMaximo) == 0)
+                .toList();
+    }
 
     public Alquiler registrar(
             int idCancha,
@@ -317,5 +418,30 @@ public class AlquilerControlador {
             LocalTime horaFin) {
 
         ReglasAlquiler.validarHorario(horaInicio, horaFin);
+    }
+    // RF10: consultar la ocupación por cancha.
+    public List<OcupacionCancha> consultarOcupacion(
+            LocalDate desde,
+            LocalDate hasta,
+            Integer idCancha)
+            throws SQLException, IOException {
+
+        exigirPermiso();
+
+        validarFecha(desde);
+        validarFecha(hasta);
+
+        if (desde.isAfter(hasta)) {
+            throw new IllegalArgumentException(
+                    "La fecha inicial no puede ser posterior a la final.");
+        }
+
+        if (idCancha != null && idCancha <= 0) {
+            throw new IllegalArgumentException(
+                    "Seleccione una cancha válida.");
+        }
+
+        return alquilerDAO.consultarOcupacion(
+                desde, hasta, idCancha);
     }
 }

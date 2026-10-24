@@ -2,17 +2,22 @@ package pe.sportcenter.dao;
 
 import pe.sportcenter.modelo.Alquiler;
 import pe.sportcenter.modelo.Cancha;
+import pe.sportcenter.modelo.CanchaResumen;
+import pe.sportcenter.modelo.IngresoPorDiaSemana;
 import pe.sportcenter.modelo.DeporteCancha;
 import pe.sportcenter.modelo.EstadoAlquiler;
 import pe.sportcenter.modelo.EstadoCancha;
 import pe.sportcenter.modelo.ResumenAlquiler;
 import pe.sportcenter.util.Conexion;
 import pe.sportcenter.util.ReglasAlquiler;
+import pe.sportcenter.modelo.OcupacionCancha;
+import java.time.temporal.ChronoUnit;
 
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.sql.*;
+import java.time.DayOfWeek;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -20,6 +25,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.sql.Types;
 
 public class AlquilerDAOImpl implements AlquilerDAO {
 
@@ -590,9 +596,22 @@ public class AlquilerDAOImpl implements AlquilerDAO {
             LocalDate hasta)
             throws SQLException, IOException {
 
-        if (desde == null || hasta == null) {
+        return resumirPorFechas(desde, hasta, null);
+    }
+
+    @Override
+    public List<ResumenAlquiler> resumirPorFechas(
+            LocalDate desde,
+            LocalDate hasta,
+            Integer idCancha)
+            throws SQLException, IOException {
+
+        validarFecha(desde);
+        validarFecha(hasta);
+
+        if (idCancha != null && idCancha <= 0) {
             throw new IllegalArgumentException(
-                    "Las fechas inicial y final son obligatorias.");
+                    "Seleccione una cancha válida.");
         }
 
         if (desde.isAfter(hasta)) {
@@ -602,15 +621,16 @@ public class AlquilerDAOImpl implements AlquilerDAO {
 
         String sql = """
             SELECT estado,
-                   COUNT(*) AS cantidad,
-                   SUM(montoTotal) AS total,
-                   AVG(montoTotal) AS promedio,
-                   MIN(montoTotal) AS minimo,
-                   MAX(montoTotal) AS maximo
-            FROM ALQUILER
-            WHERE fecha BETWEEN ? AND ?
-            GROUP BY estado
-            """;
+           COUNT(*) AS cantidad,
+           SUM(montoTotal) AS total,
+           AVG(montoTotal) AS promedio,
+           MIN(montoTotal) AS minimo,
+           MAX(montoTotal) AS maximo
+    FROM ALQUILER
+    WHERE fecha BETWEEN ? AND ?
+      AND (? IS NULL OR idCancha = ?)
+    GROUP BY estado
+    """;
 
         java.util.Map<EstadoAlquiler, ResumenAlquiler> porEstado =
                 new java.util.EnumMap<>(EstadoAlquiler.class);
@@ -622,6 +642,13 @@ public class AlquilerDAOImpl implements AlquilerDAO {
 
             consulta.setDate(1, Date.valueOf(desde));
             consulta.setDate(2, Date.valueOf(hasta));
+            if (idCancha == null) {
+                consulta.setNull(3, Types.INTEGER);
+                consulta.setNull(4, Types.INTEGER);
+            } else {
+                consulta.setInt(3, idCancha);
+                consulta.setInt(4, idCancha);
+            }
 
             try (ResultSet resultado = consulta.executeQuery()) {
                 while (resultado.next()) {
@@ -666,6 +693,134 @@ public class AlquilerDAOImpl implements AlquilerDAO {
         return resumenes;
     }
 
+    // RF10: canchas con mas alquileres confirmados y completados en el periodo.
+    @Override
+    public List<CanchaResumen> resumirAlquileresPorCancha(
+            LocalDate desde,
+            LocalDate hasta)
+            throws SQLException, IOException {
+
+        validarFecha(desde);
+        validarFecha(hasta);
+
+        if (desde.isAfter(hasta)) {
+            throw new IllegalArgumentException(
+                    "La fecha inicial no puede ser posterior a la final.");
+        }
+
+        String sql = """
+                SELECT c.idCancha,
+                       c.nombre,
+                       c.deporte,
+                       c.tarifaHora,
+                       c.estado,
+                       COUNT(*) AS cantidad
+                FROM ALQUILER a
+                INNER JOIN CANCHA c ON c.idCancha = a.idCancha
+                WHERE a.fecha BETWEEN ? AND ?
+                  AND a.estado IN ('confirmado', 'completado')
+                GROUP BY c.idCancha, c.nombre, c.deporte,
+                         c.tarifaHora, c.estado
+                ORDER BY cantidad DESC, c.idCancha ASC
+                """;
+
+        List<CanchaResumen> resumenes = new ArrayList<>();
+
+        try (Connection conexion =
+                     Conexion.getInstancia().abrirConexion();
+             PreparedStatement consulta =
+                     conexion.prepareStatement(sql)) {
+
+            consulta.setDate(1, Date.valueOf(desde));
+            consulta.setDate(2, Date.valueOf(hasta));
+
+            try (ResultSet resultado = consulta.executeQuery()) {
+                while (resultado.next()) {
+                    Cancha cancha = new Cancha(
+                            resultado.getInt("idCancha"),
+                            resultado.getString("nombre"),
+                            DeporteCancha.desdeBD(
+                                    resultado.getString("deporte")),
+                            resultado.getBigDecimal("tarifaHora"),
+                            EstadoCancha.desdeBD(
+                                    resultado.getString("estado"))
+                    );
+
+                    resumenes.add(new CanchaResumen(
+                            cancha,
+                            resultado.getLong("cantidad")
+                    ));
+                }
+            }
+        }
+
+        return resumenes;
+    }
+
+    // RF10: ingresos acumulados por dia de la semana en el periodo y cancha filtrada.
+    // Incluye confirmados y completados, excluye cancelados.
+    @Override
+    public List<IngresoPorDiaSemana> resumirIngresosPorDiaSemana(
+            LocalDate desde,
+            LocalDate hasta,
+            Integer idCancha)
+            throws SQLException, IOException {
+
+        validarFecha(desde);
+        validarFecha(hasta);
+
+        if (desde.isAfter(hasta)) {
+            throw new IllegalArgumentException(
+                    "La fecha inicial no puede ser posterior a la final.");
+        }
+
+        if (idCancha != null && idCancha <= 0) {
+            throw new IllegalArgumentException(
+                    "Seleccione una cancha valida.");
+        }
+
+        String sql = """
+                SELECT WEEKDAY(fecha) + 1 AS diaSemana,
+                       SUM(montoTotal) AS total
+                FROM ALQUILER
+                WHERE fecha BETWEEN ? AND ?
+                  AND estado IN ('confirmado', 'completado')
+                  AND (? IS NULL OR idCancha = ?)
+                GROUP BY WEEKDAY(fecha) + 1
+                ORDER BY total DESC, diaSemana ASC
+                """;
+
+        List<IngresoPorDiaSemana> ingresos = new ArrayList<>();
+
+        try (Connection conexion =
+                     Conexion.getInstancia().abrirConexion();
+             PreparedStatement consulta =
+                     conexion.prepareStatement(sql)) {
+
+            consulta.setDate(1, Date.valueOf(desde));
+            consulta.setDate(2, Date.valueOf(hasta));
+
+            if (idCancha == null) {
+                consulta.setNull(3, Types.INTEGER);
+                consulta.setNull(4, Types.INTEGER);
+            } else {
+                consulta.setInt(3, idCancha);
+                consulta.setInt(4, idCancha);
+            }
+
+            try (ResultSet resultado = consulta.executeQuery()) {
+                while (resultado.next()) {
+                    ingresos.add(new IngresoPorDiaSemana(
+                            DayOfWeek.of(resultado.getInt("diaSemana")),
+                            resultado.getBigDecimal("total")
+                    ));
+                }
+            }
+        }
+
+        return ingresos;
+    }
+
     private Alquiler convertirAlquiler(ResultSet resultado)
             throws SQLException {
 
@@ -680,5 +835,103 @@ public class AlquilerDAOImpl implements AlquilerDAO {
                 resultado.getBigDecimal("montoTotal"),
                 EstadoAlquiler.desdeBD(resultado.getString("estado"))
         );
+    }
+    // RF10: ocupación por cancha durante un periodo.
+    @Override
+    public List<OcupacionCancha> consultarOcupacion(
+            LocalDate desde,
+            LocalDate hasta,
+            Integer idCancha)
+            throws SQLException, IOException {
+
+        validarFecha(desde);
+        validarFecha(hasta);
+
+        if (desde.isAfter(hasta)) {
+            throw new IllegalArgumentException(
+                    "La fecha inicial no puede ser posterior a la final.");
+        }
+
+        if (idCancha != null && idCancha <= 0) {
+            throw new IllegalArgumentException(
+                    "Seleccione una cancha válida.");
+        }
+
+        // Incluye tanto la fecha inicial como la fecha final.
+        long dias = ChronoUnit.DAYS.between(
+                desde, hasta) + 1;
+
+        // Horario de SportCenter: 08:00 a 23:00.
+        long minutosDiarios = Duration.between(
+                ReglasAlquiler.HORA_APERTURA,
+                ReglasAlquiler.HORA_CIERRE
+        ).toMinutes();
+
+        // Capacidad teórica de una cancha para todo el periodo.
+        long capacidadTeorica = dias * minutosDiarios;
+
+        String sql = """
+            SELECT c.idCancha,
+                   c.nombre,
+                   COALESCE(
+                       SUM(
+                           TIMESTAMPDIFF(
+                               MINUTE,
+                               TIMESTAMP(a.fecha, a.horaInicio),
+                               TIMESTAMP(a.fecha, a.horaFin)
+                           )
+                       ),
+                       0
+                   ) AS minutosReservados
+            FROM CANCHA c
+            LEFT JOIN ALQUILER a
+              ON a.idCancha = c.idCancha
+             AND a.fecha BETWEEN ? AND ?
+             AND a.estado IN ('confirmado', 'completado')
+            WHERE (? IS NULL OR c.idCancha = ?)
+            GROUP BY c.idCancha, c.nombre
+            ORDER BY c.idCancha
+            """;
+
+        List<OcupacionCancha> ocupaciones =
+                new ArrayList<>();
+
+        try (Connection conexion =
+                     Conexion.getInstancia().abrirConexion();
+             PreparedStatement consulta =
+                     conexion.prepareStatement(sql)) {
+
+            consulta.setDate(1, Date.valueOf(desde));
+            consulta.setDate(2, Date.valueOf(hasta));
+
+            // null = todas las canchas.
+            if (idCancha == null) {
+
+                consulta.setNull(3, Types.INTEGER);
+                consulta.setNull(4, Types.INTEGER);
+
+            } else {
+
+                consulta.setInt(3, idCancha);
+                consulta.setInt(4, idCancha);
+            }
+
+            try (ResultSet resultado = consulta.executeQuery()) {
+
+                while (resultado.next()) {
+
+                    ocupaciones.add(
+                            new OcupacionCancha(
+                                    resultado.getInt("idCancha"),
+                                    resultado.getString("nombre"),
+                                    resultado.getLong("minutosReservados"),
+                                    capacidadTeorica
+                            )
+                    );
+                }
+            }
+        }
+
+        return ocupaciones;
     }
 }
