@@ -1,7 +1,7 @@
 package pe.sportcenter.modelo;
 
+/** Estados del ciclo de vida de un alquiler y su representación en MySQL y en pantalla. */
 public enum EstadoAlquiler {
-
     CONFIRMADO("confirmado"),
     CANCELADO("cancelado"),
     COMPLETADO("completado");
@@ -12,10 +12,12 @@ public enum EstadoAlquiler {
         this.valorBD = valorBD;
     }
 
+    /** Devuelve el texto que se utiliza al guardar el valor en MySQL. */
     public String valorBD() {
         return valorBD;
     }
 
+    /** Convierte el texto persistido al valor enumerado y rechaza valores desconocidos. */
     public static EstadoAlquiler desdeBD(String valor) {
         for (EstadoAlquiler estado : values()) {
             if (estado.valorBD.equals(valor)) {
@@ -23,8 +25,7 @@ public enum EstadoAlquiler {
             }
         }
 
-        throw new IllegalArgumentException(
-                "Estado de alquiler desconocido: " + valor);
+        throw new IllegalArgumentException("Estado de alquiler desconocido: " + valor);
     }
 
     @Override

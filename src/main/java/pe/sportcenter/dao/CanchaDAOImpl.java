@@ -1,4 +1,3 @@
-
 package pe.sportcenter.dao;
 
 import pe.sportcenter.modelo.Cancha;
@@ -15,13 +14,17 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Implementación JDBC del CRUD de canchas. La eliminación física respeta los alquileres asociados y
+ * la lógica conserva el registro con estado inactiva.
+ */
 public class CanchaDAOImpl implements CanchaDAO {
 
     @Override
-    public List<Cancha> listarTodas()
-            throws SQLException, IOException {
+    public List<Cancha> listarTodas() throws SQLException, IOException {
 
-        String sql = """
+        String sql =
+                """
                 SELECT idCancha, nombre, deporte, tarifaHora, estado
                 FROM CANCHA
                 ORDER BY idCancha
@@ -42,10 +45,10 @@ public class CanchaDAOImpl implements CanchaDAO {
     }
 
     @Override
-    public void registrar(Cancha cancha)
-            throws SQLException, IOException {
+    public void registrar(Cancha cancha) throws SQLException, IOException {
 
-        String sql = """
+        String sql =
+                """
                 INSERT INTO CANCHA (nombre, deporte, tarifaHora, estado)
                 VALUES (?, ?, ?, ?)
                 """;
@@ -63,10 +66,10 @@ public class CanchaDAOImpl implements CanchaDAO {
     }
 
     @Override
-    public void actualizar(Cancha cancha)
-            throws SQLException, IOException {
+    public void actualizar(Cancha cancha) throws SQLException, IOException {
 
-        String sql = """
+        String sql =
+                """
                 UPDATE CANCHA
                 SET nombre = ?, deporte = ?, tarifaHora = ?, estado = ?
                 WHERE idCancha = ?
@@ -82,17 +85,16 @@ public class CanchaDAOImpl implements CanchaDAO {
             consulta.setInt(5, cancha.getIdCancha());
 
             if (consulta.executeUpdate() == 0) {
-                throw new SQLException(
-                        "No se encontró la cancha para actualizar.");
+                throw new SQLException("No se encontró la cancha para actualizar.");
             }
         }
     }
 
     @Override
-    public boolean eliminarLogicamente(int idCancha)
-            throws SQLException, IOException {
+    public boolean eliminarLogicamente(int idCancha) throws SQLException, IOException {
 
-        String sql = """
+        String sql =
+                """
                 UPDATE CANCHA
                 SET estado = 'inactiva'
                 WHERE idCancha = ? AND estado <> 'inactiva'
@@ -107,11 +109,11 @@ public class CanchaDAOImpl implements CanchaDAO {
     }
 
     @Override
-    public boolean eliminarFisicamente(int idCancha)
-            throws SQLException, IOException {
+    public boolean eliminarFisicamente(int idCancha) throws SQLException, IOException {
 
         // No borra la cancha si tiene alquileres asociados.
-        String sql = """
+        String sql =
+                """
                 DELETE FROM CANCHA
                 WHERE idCancha = ?
                   AND NOT EXISTS (
@@ -131,11 +133,12 @@ public class CanchaDAOImpl implements CanchaDAO {
         }
     }
 
+    /** Incluye canchas sin alquileres y cuenta todos los estados, sin filtro por periodo. */
     @Override
-    public List<CanchaResumen> listarConCantidadAlquileres()
-            throws SQLException, IOException {
+    public List<CanchaResumen> listarConCantidadAlquileres() throws SQLException, IOException {
 
-        String sql = """
+        String sql =
+                """
                 SELECT c.idCancha, c.nombre, c.deporte,
                        c.tarifaHora, c.estado,
                        COUNT(a.idAlquiler) AS cantidadAlquileres
@@ -164,15 +167,14 @@ public class CanchaDAOImpl implements CanchaDAO {
         return resumenes;
     }
 
-    private Cancha convertirCancha(ResultSet resultado)
-            throws SQLException {
+    /** Convierte la fila actual del ResultSet en un objeto del modelo. */
+    private Cancha convertirCancha(ResultSet resultado) throws SQLException {
 
         return new Cancha(
                 resultado.getInt("idCancha"),
                 resultado.getString("nombre"),
                 DeporteCancha.desdeBD(resultado.getString("deporte")),
                 resultado.getBigDecimal("tarifaHora"),
-                EstadoCancha.desdeBD(resultado.getString("estado"))
-        );
+                EstadoCancha.desdeBD(resultado.getString("estado")));
     }
 }

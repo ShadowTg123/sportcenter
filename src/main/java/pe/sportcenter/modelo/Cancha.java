@@ -2,6 +2,10 @@ package pe.sportcenter.modelo;
 
 import java.math.BigDecimal;
 
+/**
+ * Datos de una cancha: identidad, deporte, tarifa por hora y estado operativo. La disponibilidad
+ * por fecha y horario se consulta mediante los alquileres.
+ */
 public class Cancha {
 
     private final int idCancha;

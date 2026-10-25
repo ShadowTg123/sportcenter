@@ -1,4 +1,3 @@
-
 package pe.sportcenter.dao;
 
 import pe.sportcenter.modelo.Cancha;
@@ -8,6 +7,7 @@ import java.io.IOException;
 import java.sql.SQLException;
 import java.util.List;
 
+/** Contrato de persistencia para consultar y gestionar canchas y sus conteos de alquileres. */
 public interface CanchaDAO {
 
     List<Cancha> listarTodas() throws SQLException, IOException;
@@ -16,12 +16,9 @@ public interface CanchaDAO {
 
     void actualizar(Cancha cancha) throws SQLException, IOException;
 
-    boolean eliminarLogicamente(int idCancha)
-            throws SQLException, IOException;
+    boolean eliminarLogicamente(int idCancha) throws SQLException, IOException;
 
-    boolean eliminarFisicamente(int idCancha)
-            throws SQLException, IOException;
+    boolean eliminarFisicamente(int idCancha) throws SQLException, IOException;
 
-    List<CanchaResumen> listarConCantidadAlquileres()
-            throws SQLException, IOException;
+    List<CanchaResumen> listarConCantidadAlquileres() throws SQLException, IOException;
 }

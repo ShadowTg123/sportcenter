@@ -2,13 +2,10 @@ package pe.sportcenter.vista;
 
 import pe.sportcenter.controlador.CanchaControlador;
 import pe.sportcenter.modelo.Cancha;
+import pe.sportcenter.modelo.CanchaResumen;
 import pe.sportcenter.modelo.DeporteCancha;
 import pe.sportcenter.modelo.EstadoCancha;
-import pe.sportcenter.modelo.CanchaResumen;
 
-import javax.swing.*;
-import javax.swing.border.EmptyBorder;
-import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
@@ -17,35 +14,41 @@ import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 
+import javax.swing.*;
+import javax.swing.border.EmptyBorder;
+import javax.swing.table.DefaultTableModel;
+
+/**
+ * Pantalla maestro-detalle para consultar y gestionar canchas. Coordina selección, edición,
+ * confirmación de eliminación y operaciones en segundo plano.
+ */
 public class CanchaVista extends JDialog {
 
     private final CanchaControlador controlador;
     private final boolean administrador;
 
-    private final DefaultTableModel modeloTabla = new DefaultTableModel(
-            new Object[]{"ID", "Nombre", "Deporte", "Tarifa S/", "Estado"}, 0) {
-        @Override
-        public boolean isCellEditable(int fila, int columna) {
-            return false;
-        }
-    };
+    private final DefaultTableModel modeloTabla =
+            new DefaultTableModel(
+                    new Object[] {"ID", "Nombre", "Deporte", "Tarifa S/", "Estado"}, 0) {
+                @Override
+                public boolean isCellEditable(int fila, int columna) {
+                    return false;
+                }
+            };
 
     private final JTable tabla = new JTable(modeloTabla);
 
     private final JTextField campoNombre = new JTextField();
     private final JTextField campoTarifa = new JTextField();
-    private final JComboBox<DeporteCancha> campoDeporte =
-            new JComboBox<>(DeporteCancha.values());
-    private final JComboBox<EstadoCancha> campoEstado =
-            new JComboBox<>(EstadoCancha.values());
+    private final JComboBox<DeporteCancha> campoDeporte = new JComboBox<>(DeporteCancha.values());
+    private final JComboBox<EstadoCancha> campoEstado = new JComboBox<>(EstadoCancha.values());
 
     private final JButton botonAdicionar = new JButton("Adicionar");
     private final JButton botonModificar = new JButton("Modificar");
     private final JButton botonGuardar = new JButton("Guardar");
     private final JButton botonEliminar = new JButton("Eliminar");
     private final JButton botonConsultar = new JButton("Consultar");
-    private final JButton botonResumen =
-            new JButton("Alquileres por cancha");
+    private final JButton botonResumen = new JButton("Alquileres por cancha");
 
     private final JLabel mensaje = new JLabel(" ");
 
@@ -54,10 +57,7 @@ public class CanchaVista extends JDialog {
     private boolean editando;
     private int idEdicion;
 
-    public CanchaVista(
-            JFrame propietario,
-            CanchaControlador controlador,
-            boolean administrador) {
+    public CanchaVista(JFrame propietario, CanchaControlador controlador, boolean administrador) {
 
         super(propietario, "Sport Center - Canchas", true);
         this.controlador = controlador;
@@ -108,11 +108,13 @@ public class CanchaVista extends JDialog {
         contenido.add(mensaje, BorderLayout.SOUTH);
         setContentPane(contenido);
 
-        tabla.getSelectionModel().addListSelectionListener(e -> {
-            if (!e.getValueIsAdjusting() && !ocupado && !editando) {
-                mostrarSeleccion();
-            }
-        });
+        tabla.getSelectionModel()
+                .addListSelectionListener(
+                        e -> {
+                            if (!e.getValueIsAdjusting() && !ocupado && !editando) {
+                                mostrarSeleccion();
+                            }
+                        });
 
         botonAdicionar.addActionListener(e -> prepararRegistro());
         botonModificar.addActionListener(e -> prepararModificacion());
@@ -121,30 +123,32 @@ public class CanchaVista extends JDialog {
         botonConsultar.addActionListener(e -> consultar());
         botonResumen.addActionListener(e -> consultarResumenAlquileres());
 
-        addWindowListener(new WindowAdapter() {
-            @Override
-            public void windowClosing(WindowEvent e) {
-                if (!ocupado) {
-                    dispose();
-                }
-            }
-        });
+        addWindowListener(
+                new WindowAdapter() {
+                    @Override
+                    public void windowClosing(WindowEvent e) {
+                        if (!ocupado) {
+                            dispose();
+                        }
+                    }
+                });
 
         actualizarControles();
         consultar();
     }
 
+    /** Obtiene la cancha de la fila seleccionada teniendo en cuenta la ordenación de la tabla. */
     private Cancha canchaSeleccionada() {
         int fila = tabla.getSelectedRow();
 
         if (fila < 0 || fila >= canchas.size()) {
-            throw new IllegalArgumentException(
-                    "Seleccione una cancha de la tabla.");
+            throw new IllegalArgumentException("Seleccione una cancha de la tabla.");
         }
 
         return canchas.get(fila);
     }
 
+    /** Muestra en el detalle los datos de la cancha seleccionada. */
     private void mostrarSeleccion() {
         if (tabla.getSelectedRow() < 0) {
             return;
@@ -158,6 +162,7 @@ public class CanchaVista extends JDialog {
         campoEstado.setSelectedItem(cancha.getEstado());
     }
 
+    /** Prepara un formulario vacío para adicionar una cancha. */
     private void prepararRegistro() {
         if (!administrador || ocupado) {
             return;
@@ -174,6 +179,7 @@ public class CanchaVista extends JDialog {
         campoNombre.requestFocusInWindow();
     }
 
+    /** Carga la cancha seleccionada y habilita su edición. */
     private void prepararModificacion() {
         try {
             Cancha cancha = canchaSeleccionada();
@@ -190,6 +196,7 @@ public class CanchaVista extends JDialog {
         }
     }
 
+    /** Recoge los datos del formulario y delega el registro o la modificación. */
     private void guardar() {
         if (!editando || ocupado) {
             return;
@@ -197,101 +204,96 @@ public class CanchaVista extends JDialog {
 
         try {
             String nombre = campoNombre.getText();
-            DeporteCancha deporte =
-                    (DeporteCancha) campoDeporte.getSelectedItem();
-            EstadoCancha estado =
-                    (EstadoCancha) campoEstado.getSelectedItem();
+            DeporteCancha deporte = (DeporteCancha) campoDeporte.getSelectedItem();
+            EstadoCancha estado = (EstadoCancha) campoEstado.getSelectedItem();
 
-            BigDecimal tarifa =
-                    new BigDecimal(campoTarifa.getText().strip());
+            BigDecimal tarifa = new BigDecimal(campoTarifa.getText().strip());
 
             int id = idEdicion;
 
-            ejecutar(() -> {
-                if (id == 0) {
-                    controlador.registrar(nombre, deporte, tarifa);
-                } else {
-                    controlador.actualizar(id, nombre, deporte, tarifa, estado);
-                }
+            ejecutar(
+                    () -> {
+                        if (id == 0) {
+                            controlador.registrar(nombre, deporte, tarifa);
+                        } else {
+                            controlador.actualizar(id, nombre, deporte, tarifa, estado);
+                        }
 
-                return controlador.listarCanchas();
-            }, "Datos guardados correctamente.");
+                        return controlador.listarCanchas();
+                    },
+                    "Datos guardados correctamente.");
 
         } catch (NumberFormatException e) {
-            mostrarError(
-                    "Ingrese una tarifa numérica usando punto decimal. "
-                            + "Ejemplo: 50.00");
+            mostrarError("Ingrese una tarifa numérica usando punto decimal. " + "Ejemplo: 50.00");
         }
     }
 
+    /** Solicita confirmación y permite elegir la eliminación lógica o física. */
     private void eliminar() {
         try {
             Cancha cancha = canchaSeleccionada();
 
-            Object[] opciones = {
-                    "Eliminación lógica",
-                    "Eliminación física",
-                    "Cancelar"
-            };
+            Object[] opciones = {"Eliminación lógica", "Eliminación física", "Cancelar"};
 
-            int opcion = JOptionPane.showOptionDialog(
-                    this,
-                    "Cancha: " + cancha.getNombre()
-                            + "\nLógica: conserva el registro como inactivo."
-                            + "\nFísica: borra definitivamente el registro"
-                            + "\nsi no tiene alquileres asociados.",
-                    "Confirmar eliminación",
-                    JOptionPane.DEFAULT_OPTION,
-                    JOptionPane.WARNING_MESSAGE,
-                    null,
-                    opciones,
-                    opciones[2]
-            );
+            int opcion =
+                    JOptionPane.showOptionDialog(
+                            this,
+                            "Cancha: "
+                                    + cancha.getNombre()
+                                    + "\nLógica: conserva el registro como inactivo."
+                                    + "\nFísica: borra definitivamente el registro"
+                                    + "\nsi no tiene alquileres asociados.",
+                            "Confirmar eliminación",
+                            JOptionPane.DEFAULT_OPTION,
+                            JOptionPane.WARNING_MESSAGE,
+                            null,
+                            opciones,
+                            opciones[2]);
 
             if (opcion != 0 && opcion != 1) {
                 return;
             }
 
-            ejecutar(() -> {
-                boolean realizada;
+            ejecutar(
+                    () -> {
+                        boolean realizada;
 
-                if (opcion == 0) {
-                    realizada = controlador.eliminarLogicamente(
-                            cancha.getIdCancha());
-                } else {
-                    realizada = controlador.eliminarFisicamente(
-                            cancha.getIdCancha());
-                }
+                        if (opcion == 0) {
+                            realizada = controlador.eliminarLogicamente(cancha.getIdCancha());
+                        } else {
+                            realizada = controlador.eliminarFisicamente(cancha.getIdCancha());
+                        }
 
-                if (!realizada) {
-                    throw new IllegalArgumentException(
-                            opcion == 0
-                                    ? "La cancha ya está inactiva o no existe."
-                                    : "No se pudo eliminar: la cancha tiene "
-                                      + "alquileres asociados o ya no existe."
-                    );
-                }
+                        if (!realizada) {
+                            throw new IllegalArgumentException(
+                                    opcion == 0
+                                            ? "La cancha ya está inactiva o no existe."
+                                            : "No se pudo eliminar: la cancha tiene "
+                                              + "alquileres asociados o ya no existe.");
+                        }
 
-                return controlador.listarCanchas();
-            }, "Eliminación realizada correctamente.");
+                        return controlador.listarCanchas();
+                    },
+                    "Eliminación realizada correctamente.");
 
         } catch (IllegalArgumentException e) {
             mostrarError(e.getMessage());
         }
     }
 
+    /** Obtiene los datos del módulo en segundo plano y actualiza la pantalla. */
     private void consultar() {
         if (ocupado) {
             return;
         }
 
         if (editando) {
-            int respuesta = JOptionPane.showConfirmDialog(
-                    this,
-                    "¿Descartar los cambios del formulario y consultar?",
-                    "Consultar canchas",
-                    JOptionPane.YES_NO_OPTION
-            );
+            int respuesta =
+                    JOptionPane.showConfirmDialog(
+                            this,
+                            "¿Descartar los cambios del formulario y consultar?",
+                            "Consultar canchas",
+                            JOptionPane.YES_NO_OPTION);
 
             if (respuesta != JOptionPane.YES_OPTION) {
                 return;
@@ -301,74 +303,76 @@ public class CanchaVista extends JDialog {
         ejecutar(controlador::listarCanchas, "Consulta actualizada.");
     }
 
-    private void ejecutar(
-            Callable<List<Cancha>> operacion,
-            String mensajeExito) {
+    /**
+     * Ejecuta el trabajo en segundo plano y atiende el resultado en el hilo de eventos de Swing.
+     */
+    private void ejecutar(Callable<List<Cancha>> operacion, String mensajeExito) {
 
         ocupado = true;
         actualizarControles();
         mensaje.setText("Procesando...");
 
-        SwingWorker<List<Cancha>, Void> tarea = new SwingWorker<>() {
+        SwingWorker<List<Cancha>, Void> tarea =
+                new SwingWorker<>() {
 
-            @Override
-            protected List<Cancha> doInBackground() throws Exception {
-                return operacion.call();
-            }
-
-            @Override
-            protected void done() {
-                try {
-                    canchas = get();
-
-                    editando = false;
-                    idEdicion = 0;
-                    modeloTabla.setRowCount(0);
-
-                    for (Cancha cancha : canchas) {
-                        modeloTabla.addRow(new Object[]{
-                                cancha.getIdCancha(),
-                                cancha.getNombre(),
-                                cancha.getDeporte().valorBD(),
-                                cancha.getTarifaHora().toPlainString(),
-                                cancha.getEstado().valorBD()
-                        });
+                    @Override
+                    protected List<Cancha> doInBackground() throws Exception {
+                        return operacion.call();
                     }
 
-                    limpiarFormulario();
-                    mensaje.setText(
-                            mensajeExito + " Registros: " + canchas.size());
+                    @Override
+                    protected void done() {
+                        try {
+                            canchas = get();
 
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    mostrarError("La operación fue interrumpida.");
+                            editando = false;
+                            idEdicion = 0;
+                            modeloTabla.setRowCount(0);
 
-                } catch (ExecutionException e) {
-                    Throwable causa = e.getCause();
+                            for (Cancha cancha : canchas) {
+                                modeloTabla.addRow(
+                                        new Object[] {
+                                                cancha.getIdCancha(),
+                                                cancha.getNombre(),
+                                                cancha.getDeporte().valorBD(),
+                                                cancha.getTarifaHora().toPlainString(),
+                                                cancha.getEstado().valorBD()
+                                        });
+                            }
 
-                    if (causa instanceof IllegalArgumentException
-                            || causa instanceof SecurityException) {
-                        mostrarError(causa.getMessage());
-                    } else {
-                        mostrarError(
-                                "No se pudo completar o confirmar la operación."
-                                        + "\nConsulte los datos antes de volver a intentarlo."
-                        );
-                        causa.printStackTrace();
+                            limpiarFormulario();
+                            mensaje.setText(mensajeExito + " Registros: " + canchas.size());
+
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            mostrarError("La operación fue interrumpida.");
+
+                        } catch (ExecutionException e) {
+                            Throwable causa = e.getCause();
+
+                            if (causa instanceof IllegalArgumentException
+                                    || causa instanceof SecurityException) {
+                                mostrarError(causa.getMessage());
+                            } else {
+                                mostrarError(
+                                        "No se pudo completar o confirmar la operación."
+                                                + "\nConsulte los datos antes de volver a intentarlo.");
+                                causa.printStackTrace();
+                            }
+
+                            mensaje.setText("No se pudo completar la operación.");
+
+                        } finally {
+                            ocupado = false;
+                            actualizarControles();
+                        }
                     }
-
-                    mensaje.setText("No se pudo completar la operación.");
-
-                } finally {
-                    ocupado = false;
-                    actualizarControles();
-                }
-            }
-        };
+                };
 
         tarea.execute();
     }
 
+    /** Consulta los conteos y abre una tabla de alquileres por cancha. */
     private void consultarResumenAlquileres() {
         if (ocupado || editando) {
             return;
@@ -378,115 +382,116 @@ public class CanchaVista extends JDialog {
         actualizarControles();
         mensaje.setText("Consultando alquileres por cancha...");
 
-        SwingWorker<List<CanchaResumen>, Void> tarea = new SwingWorker<>() {
+        SwingWorker<List<CanchaResumen>, Void> tarea =
+                new SwingWorker<>() {
 
-            @Override
-            protected List<CanchaResumen> doInBackground() throws Exception {
-                return controlador.listarResumenAlquileres();
-            }
+                    @Override
+                    protected List<CanchaResumen> doInBackground() throws Exception {
+                        return controlador.listarResumenAlquileres();
+                    }
 
-            @Override
-            protected void done() {
-                try {
-                    List<CanchaResumen> resumenes = get();
+                    @Override
+                    protected void done() {
+                        try {
+                            List<CanchaResumen> resumenes = get();
 
-                    DefaultTableModel modeloResumen = new DefaultTableModel(
-                            new Object[]{
-                                    "ID", "Cancha", "Deporte",
-                                    "Estado", "Total de alquileres"
-                            }, 0) {
+                            DefaultTableModel modeloResumen =
+                                    new DefaultTableModel(
+                                            new Object[] {
+                                                    "ID",
+                                                    "Cancha",
+                                                    "Deporte",
+                                                    "Estado",
+                                                    "Total de alquileres"
+                                            },
+                                            0) {
 
-                        @Override
-                        public boolean isCellEditable(int fila, int columna) {
-                            return false;
+                                        @Override
+                                        public boolean isCellEditable(int fila, int columna) {
+                                            return false;
+                                        }
+                                    };
+
+                            for (CanchaResumen resumen : resumenes) {
+                                Cancha cancha = resumen.getCancha();
+
+                                modeloResumen.addRow(
+                                        new Object[] {
+                                                cancha.getIdCancha(),
+                                                cancha.getNombre(),
+                                                cancha.getDeporte().valorBD(),
+                                                cancha.getEstado().valorBD(),
+                                                resumen.getCantidadAlquileres()
+                                        });
+                            }
+
+                            JTable tablaResumen = new JTable(modeloResumen);
+                            tablaResumen.setRowHeight(26);
+                            tablaResumen.setFillsViewportHeight(true);
+
+                            JDialog ventana =
+                                    new JDialog(
+                                            CanchaVista.this,
+                                            "Sport Center - Alquileres por cancha",
+                                            true);
+
+                            ventana.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
+
+                            JPanel contenido = new JPanel(new BorderLayout(10, 10));
+                            contenido.setBorder(new EmptyBorder(15, 15, 15, 15));
+
+                            contenido.add(
+                                    new JLabel(
+                                            "Total histórico: incluye alquileres "
+                                                    + "confirmados, cancelados y completados."),
+                                    BorderLayout.NORTH);
+
+                            contenido.add(new JScrollPane(tablaResumen), BorderLayout.CENTER);
+
+                            JButton botonCerrar = new JButton("Cerrar");
+                            botonCerrar.addActionListener(e -> ventana.dispose());
+
+                            JPanel pie = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+                            pie.add(botonCerrar);
+                            contenido.add(pie, BorderLayout.SOUTH);
+
+                            ventana.setContentPane(contenido);
+                            ventana.setSize(750, 400);
+                            ventana.setLocationRelativeTo(CanchaVista.this);
+
+                            mensaje.setText("Resumen consultado. Canchas: " + resumenes.size());
+
+                            ventana.setVisible(true);
+
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            mensaje.setText("Consulta interrumpida.");
+                            mostrarError("La consulta fue interrumpida.");
+
+                        } catch (ExecutionException e) {
+                            Throwable causa = e.getCause();
+
+                            mensaje.setText("No se pudo consultar el resumen.");
+
+                            if (causa instanceof SecurityException
+                                    || causa instanceof IllegalArgumentException) {
+                                mostrarError(causa.getMessage());
+                            } else {
+                                mostrarError("No se pudo consultar el resumen de alquileres.");
+                                causa.printStackTrace();
+                            }
+
+                        } finally {
+                            ocupado = false;
+                            actualizarControles();
                         }
-                    };
-
-                    for (CanchaResumen resumen : resumenes) {
-                        Cancha cancha = resumen.getCancha();
-
-                        modeloResumen.addRow(new Object[]{
-                                cancha.getIdCancha(),
-                                cancha.getNombre(),
-                                cancha.getDeporte().valorBD(),
-                                cancha.getEstado().valorBD(),
-                                resumen.getCantidadAlquileres()
-                        });
                     }
-
-                    JTable tablaResumen = new JTable(modeloResumen);
-                    tablaResumen.setRowHeight(26);
-                    tablaResumen.setFillsViewportHeight(true);
-
-                    JDialog ventana = new JDialog(
-                            CanchaVista.this,
-                            "Sport Center - Alquileres por cancha",
-                            true
-                    );
-
-                    ventana.setDefaultCloseOperation(
-                            WindowConstants.DISPOSE_ON_CLOSE);
-
-                    JPanel contenido = new JPanel(new BorderLayout(10, 10));
-                    contenido.setBorder(new EmptyBorder(15, 15, 15, 15));
-
-                    contenido.add(
-                            new JLabel(
-                                    "Total histórico: incluye alquileres "
-                                            + "confirmados, cancelados y completados."),
-                            BorderLayout.NORTH
-                    );
-
-                    contenido.add(
-                            new JScrollPane(tablaResumen),
-                            BorderLayout.CENTER
-                    );
-
-                    JButton botonCerrar = new JButton("Cerrar");
-                    botonCerrar.addActionListener(e -> ventana.dispose());
-
-                    JPanel pie = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-                    pie.add(botonCerrar);
-                    contenido.add(pie, BorderLayout.SOUTH);
-
-                    ventana.setContentPane(contenido);
-                    ventana.setSize(750, 400);
-                    ventana.setLocationRelativeTo(CanchaVista.this);
-
-                    mensaje.setText(
-                            "Resumen consultado. Canchas: " + resumenes.size());
-
-                    ventana.setVisible(true);
-
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    mensaje.setText("Consulta interrumpida.");
-                    mostrarError("La consulta fue interrumpida.");
-
-                } catch (ExecutionException e) {
-                    Throwable causa = e.getCause();
-
-                    mensaje.setText("No se pudo consultar el resumen.");
-
-                    if (causa instanceof SecurityException
-                            || causa instanceof IllegalArgumentException) {
-                        mostrarError(causa.getMessage());
-                    } else {
-                        mostrarError(
-                                "No se pudo consultar el resumen de alquileres.");
-                        causa.printStackTrace();
-                    }
-
-                } finally {
-                    ocupado = false;
-                    actualizarControles();
-                }
-            }
-        };
+                };
 
         tarea.execute();
     }
 
+    /** Restablece los campos del formulario para una nueva operación. */
     private void limpiarFormulario() {
         campoNombre.setText("");
         campoTarifa.setText("");
@@ -494,6 +499,7 @@ public class CanchaVista extends JDialog {
         campoEstado.setSelectedItem(EstadoCancha.DISPONIBLE);
     }
 
+    /** Ajusta los botones y campos según permisos, selección y estado de edición. */
     private void actualizarControles() {
         boolean puedeEditar = administrador && editando && !ocupado;
 
@@ -512,12 +518,8 @@ public class CanchaVista extends JDialog {
         botonResumen.setEnabled(!ocupado && !editando);
     }
 
+    /** Presenta el mensaje de error al usuario mediante un diálogo. */
     private void mostrarError(String texto) {
-        JOptionPane.showMessageDialog(
-                this,
-                texto,
-                "Gestión de canchas",
-                JOptionPane.ERROR_MESSAGE
-        );
+        JOptionPane.showMessageDialog(this, texto, "Gestión de canchas", JOptionPane.ERROR_MESSAGE);
     }
 }

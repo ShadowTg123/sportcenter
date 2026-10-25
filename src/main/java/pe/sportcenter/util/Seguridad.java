@@ -1,12 +1,18 @@
 package pe.sportcenter.util;
 
-import javax.crypto.SecretKeyFactory;
-import javax.crypto.spec.PBEKeySpec;
 import java.security.GeneralSecurityException;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.Base64;
 
+import javax.crypto.SecretKeyFactory;
+import javax.crypto.spec.PBEKeySpec;
+
+/**
+ * Genera y verifica hashes PBKDF2 con sal aleatoria. El texto guardado contiene algoritmo,
+ * iteraciones, sal y hash; no la contraseña original.
+ */
+//función de derivación de claves estandarizada en RFC 8018 que transforma contraseñas en claves criptográficas seguras mediante iteraciones y sales aleatorias
 public final class Seguridad {
 
     private static final int ITERACIONES = 600_000;
@@ -17,8 +23,8 @@ public final class Seguridad {
         // Clase de utilidad: no necesita crear objetos.
     }
 
-    public static String generarHash(char[] clave)
-            throws GeneralSecurityException {
+    /** Genera una sal nueva para que la misma contraseña produzca hashes distintos. */
+    public static String generarHash(char[] clave) throws GeneralSecurityException {
 
         byte[] sal = new byte[16];
         ALEATORIO.nextBytes(sal);
@@ -26,11 +32,15 @@ public final class Seguridad {
         byte[] hash = calcularHash(clave, sal, ITERACIONES);
 
         // Guarda algoritmo, iteraciones, sal y hash en un solo texto.
-        return "pbkdf2_sha256:" + ITERACIONES + ":"
-                + Base64.getEncoder().encodeToString(sal) + ":"
+        return "pbkdf2_sha256:"
+                + ITERACIONES
+                + ":"
+                + Base64.getEncoder().encodeToString(sal)
+                + ":"
                 + Base64.getEncoder().encodeToString(hash);
     }
 
+    /** Reconstruye el hash con la sal guardada y compara los bytes; rechaza formatos inválidos. */
     public static boolean verificarClave(char[] clave, String almacenado)
             throws GeneralSecurityException {
 
@@ -41,8 +51,7 @@ public final class Seguridad {
         try {
             String[] partes = almacenado.split(":", -1);
 
-            if (partes.length != 4
-                    || !"pbkdf2_sha256".equals(partes[0])) {
+            if (partes.length != 4 || !"pbkdf2_sha256".equals(partes[0])) {
                 return false;
             }
 
@@ -70,16 +79,13 @@ public final class Seguridad {
         }
     }
 
-    private static byte[] calcularHash(
-            char[] clave, byte[] sal, int iteraciones)
+    private static byte[] calcularHash(char[] clave, byte[] sal, int iteraciones)
             throws GeneralSecurityException {
 
-        PBEKeySpec especificacion =
-                new PBEKeySpec(clave, sal, iteraciones, LONGITUD_HASH);
+        PBEKeySpec especificacion = new PBEKeySpec(clave, sal, iteraciones, LONGITUD_HASH);
 
         try {
-            SecretKeyFactory fabrica =
-                    SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
+            SecretKeyFactory fabrica = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
 
             return fabrica.generateSecret(especificacion).getEncoded();
 

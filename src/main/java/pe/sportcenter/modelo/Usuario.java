@@ -1,5 +1,6 @@
 package pe.sportcenter.modelo;
 
+/** Datos del usuario autenticado y su rol. No transporta contraseñas ni hashes a las vistas. */
 public class Usuario {
 
     private final int idUsuario;
@@ -7,8 +8,7 @@ public class Usuario {
     private final String usuario;
     private final Rol rol;
 
-    public Usuario(int idUsuario, String nombre,
-                   String usuario, Rol rol) {
+    public Usuario(int idUsuario, String nombre, String usuario, Rol rol) {
         this.idUsuario = idUsuario;
         this.nombre = nombre;
         this.usuario = usuario;

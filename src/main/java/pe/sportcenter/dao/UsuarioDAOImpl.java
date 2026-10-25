@@ -12,13 +12,19 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
+/**
+ * Implementación JDBC de usuarios. Usa parámetros SQL y verifica el hash almacenado. Los recursos
+ * JDBC se cierran mediante try-with-resources.
+ */
 public class UsuarioDAOImpl implements UsuarioDAO {
 
+    /** Busca la cuenta y verifica el hash; devuelve null si las credenciales no coinciden. */
     @Override
     public Usuario autenticar(String usuario, char[] clave)
             throws SQLException, IOException, GeneralSecurityException {
 
-        String sql = """
+        String sql =
+                """
                 SELECT idUsuario, nombre, usuario, clave, rol
                 FROM USUARIO
                 WHERE usuario = ?
@@ -39,8 +45,7 @@ public class UsuarioDAOImpl implements UsuarioDAO {
                                 resultado.getInt("idUsuario"),
                                 resultado.getString("nombre"),
                                 resultado.getString("usuario"),
-                                Rol.desdeBD(resultado.getString("rol"))
-                        );
+                                Rol.desdeBD(resultado.getString("rol")));
                     }
                 }
             }
@@ -51,8 +56,7 @@ public class UsuarioDAOImpl implements UsuarioDAO {
     }
 
     @Override
-    public boolean existeUsuario(String usuario)
-            throws SQLException, IOException {
+    public boolean existeUsuario(String usuario) throws SQLException, IOException {
 
         String sql = "SELECT 1 FROM USUARIO WHERE usuario = ?";
 
@@ -68,11 +72,11 @@ public class UsuarioDAOImpl implements UsuarioDAO {
     }
 
     @Override
-    public void registrar(
-            String nombre, String usuario, String claveHash, Rol rol)
+    public void registrar(String nombre, String usuario, String claveHash, Rol rol)
             throws SQLException, IOException {
 
-        String sql = """
+        String sql =
+                """
                 INSERT INTO USUARIO (nombre, usuario, clave, rol)
                 VALUES (?, ?, ?, ?)
                 """;

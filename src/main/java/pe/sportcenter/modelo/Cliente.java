@@ -1,5 +1,6 @@
 package pe.sportcenter.modelo;
 
+/** Datos de identificación y contacto del cliente. El teléfono puede no estar informado. */
 public final class Cliente {
 
     private final int idCliente;
@@ -7,11 +8,7 @@ public final class Cliente {
     private final String dni;
     private final String telefono;
 
-    public Cliente(
-            int idCliente,
-            String nombre,
-            String dni,
-            String telefono) {
+    public Cliente(int idCliente, String nombre, String dni, String telefono) {
 
         this.idCliente = idCliente;
         this.nombre = nombre;

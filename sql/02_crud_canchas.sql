@@ -1,3 +1,5 @@
+-- Tablas relacionadas: canchas, clientes y alquileres.
+-- Las claves foráneas conservan las referencias entre los registros.
 USE sportcenter;
 
 CREATE TABLE IF NOT EXISTS CANCHA (

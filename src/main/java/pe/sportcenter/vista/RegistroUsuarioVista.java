@@ -3,8 +3,6 @@ package pe.sportcenter.vista;
 import pe.sportcenter.controlador.AutenticacionControlador;
 import pe.sportcenter.modelo.Rol;
 
-import javax.swing.*;
-import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
@@ -12,6 +10,13 @@ import java.sql.SQLException;
 import java.util.Arrays;
 import java.util.concurrent.ExecutionException;
 
+import javax.swing.*;
+import javax.swing.border.EmptyBorder;
+
+/**
+ * Formulario de registro de usuarios para el administrador. Comprueba la confirmación de contraseña
+ * y delega las reglas de acceso al controlador.
+ */
 public class RegistroUsuarioVista extends JDialog {
 
     private final AutenticacionControlador controlador;
@@ -27,18 +32,14 @@ public class RegistroUsuarioVista extends JDialog {
 
     private boolean procesando;
 
-    public RegistroUsuarioVista(
-            JFrame propietario,
-            AutenticacionControlador controlador) {
+    public RegistroUsuarioVista(JFrame propietario, AutenticacionControlador controlador) {
 
         super(propietario, "Sport Center - Registrar usuario", true);
         this.controlador = controlador;
 
         if (controlador.getUsuarioActual() == null
-                || controlador.getUsuarioActual().getRol()
-                != Rol.ADMINISTRADOR) {
-            throw new SecurityException(
-                    "Solo el administrador puede abrir este formulario.");
+                || controlador.getUsuarioActual().getRol() != Rol.ADMINISTRADOR) {
+            throw new SecurityException("Solo el administrador puede abrir este formulario.");
         }
 
         setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
@@ -53,7 +54,9 @@ public class RegistroUsuarioVista extends JDialog {
         formulario.add(new JLabel("Usuario (4 a 30 caracteres):"));
         formulario.add(campoUsuario);
 
-        formulario.add(new JLabel("<html>Contraseña (8 a 128 caracteres):<br>Mayúscula, minúscula, número y símbolo.</html>"));
+        formulario.add(
+                new JLabel(
+                        "<html>Contraseña (8 a 128 caracteres):<br>Mayúscula, minúscula, número y símbolo.</html>"));
         formulario.add(campoClave);
 
         formulario.add(new JLabel("Confirmar contraseña:"));
@@ -73,12 +76,13 @@ public class RegistroUsuarioVista extends JDialog {
         botonGuardar.addActionListener(e -> guardarUsuario());
         botonCancelar.addActionListener(e -> cerrarFormulario());
 
-        addWindowListener(new WindowAdapter() {
-            @Override
-            public void windowClosing(WindowEvent e) {
-                cerrarFormulario();
-            }
-        });
+        addWindowListener(
+                new WindowAdapter() {
+                    @Override
+                    public void windowClosing(WindowEvent e) {
+                        cerrarFormulario();
+                    }
+                });
 
         getRootPane().setDefaultButton(botonGuardar);
 
@@ -86,6 +90,7 @@ public class RegistroUsuarioVista extends JDialog {
         setLocationRelativeTo(propietario);
     }
 
+    /** Comprueba la confirmación de la clave y solicita el registro en segundo plano. */
     private void guardarUsuario() {
         if (procesando) {
             return;
@@ -112,67 +117,65 @@ public class RegistroUsuarioVista extends JDialog {
         cambiarEstado(true);
 
         // El registro se ejecuta sin bloquear la interfaz.
-        SwingWorker<Void, Void> tarea = new SwingWorker<>() {
+        SwingWorker<Void, Void> tarea =
+                new SwingWorker<>() {
 
-            @Override
-            protected Void doInBackground() throws Exception {
-                try {
-                    controlador.registrarUsuario(
-                            nombre, usuario, clave, rol);
-                    return null;
-                } finally {
-                    Arrays.fill(clave, '\0');
-                }
-            }
-
-            @Override
-            protected void done() {
-                try {
-                    get();
-
-                    JOptionPane.showMessageDialog(
-                            RegistroUsuarioVista.this,
-                            "Usuario registrado correctamente."
-                    );
-
-                    dispose();
-
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    mostrarError(
-                            "La operación fue interrumpida. "
-                                    + "Compruebe el registro antes de reintentar.");
-
-                } catch (ExecutionException e) {
-                    Throwable causa = e.getCause();
-
-                    if (causa instanceof IllegalArgumentException
-                            || causa instanceof SecurityException) {
-
-                        mostrarError(causa.getMessage());
-
-                    } else if (causa instanceof SQLException sql
-                            && sql.getErrorCode() == 1062) {
-
-                        mostrarError(
-                                "El nombre de usuario ya está registrado.");
-
-                    } else {
-                        mostrarError(
-                                "No se pudo confirmar el registro. "
-                                        + "Revise la conexión con MySQL.");
-                        causa.printStackTrace();
+                    @Override
+                    protected Void doInBackground() throws Exception {
+                        try {
+                            controlador.registrarUsuario(nombre, usuario, clave, rol);
+                            return null;
+                        } finally {
+                            Arrays.fill(clave, '\0');
+                        }
                     }
 
-                } finally {
-                    cambiarEstado(false);
-                }
-            }
-        };
+                    @Override
+                    protected void done() {
+                        try {
+                            get();
+
+                            JOptionPane.showMessageDialog(
+                                    RegistroUsuarioVista.this, "Usuario registrado correctamente.");
+
+                            dispose();
+
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            mostrarError(
+                                    "La operación fue interrumpida. "
+                                            + "Compruebe el registro antes de reintentar.");
+
+                        } catch (ExecutionException e) {
+                            Throwable causa = e.getCause();
+
+                            if (causa instanceof IllegalArgumentException
+                                    || causa instanceof SecurityException) {
+
+                                mostrarError(causa.getMessage());
+
+                            } else if (causa instanceof SQLException sql
+                                    && sql.getErrorCode() == 1062) {
+
+                                mostrarError("El nombre de usuario ya está registrado.");
+
+                            } else {
+                                mostrarError(
+                                        "No se pudo confirmar el registro. "
+                                                + "Revise la conexión con MySQL.");
+                                causa.printStackTrace();
+                            }
+
+                        } finally {
+                            cambiarEstado(false);
+                        }
+                    }
+                };
 
         tarea.execute();
     }
 
+    /** Habilita o deshabilita los controles mientras se procesa la operación. */
     private void cambiarEstado(boolean ocupado) {
         procesando = ocupado;
 
@@ -187,11 +190,13 @@ public class RegistroUsuarioVista extends JDialog {
         botonGuardar.setText(ocupado ? "Guardando..." : "Guardar");
     }
 
+    /** Borra el contenido visible de los campos de contraseña. */
     private void limpiarClaves() {
         campoClave.setText("");
         campoConfirmacion.setText("");
     }
 
+    /** Atiende el cierre del formulario respetando el estado de procesamiento. */
     private void cerrarFormulario() {
         if (!procesando) {
             limpiarClaves();
@@ -199,12 +204,9 @@ public class RegistroUsuarioVista extends JDialog {
         }
     }
 
+    /** Presenta el mensaje de error al usuario mediante un diálogo. */
     private void mostrarError(String texto) {
         JOptionPane.showMessageDialog(
-                this,
-                texto,
-                "Registro de usuario",
-                JOptionPane.ERROR_MESSAGE
-        );
+                this, texto, "Registro de usuario", JOptionPane.ERROR_MESSAGE);
     }
 }
